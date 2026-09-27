@@ -93,6 +93,7 @@
   function friendly(e) {
     const m = String(e?.message || e || "");
     if (/invalid login credentials/i.test(m)) return "Email or password is incorrect.";
+    if (/user is banned|been suspended/i.test(m)) return "This account has been suspended. If you think this is a mistake, email kindred.salone@gmail.com.";
     if (/email not confirmed/i.test(m)) return "Please confirm your email first. Check your inbox (and spam folder).";
     if (/already registered|already exists/i.test(m)) return "An account with this email already exists. Try signing in instead.";
     if (/18 or older/i.test(m)) return "You must be 18 or older to use Kindred.";

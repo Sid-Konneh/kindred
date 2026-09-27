@@ -1,0 +1,413 @@
+"use strict";
+/* Kindred admin console. Every action goes through admin_* database functions, which check the
+   caller's role on the server; this page only decides what to show. */
+(() => {
+  const CFG = window.KINDRED_CONFIG || {};
+  const sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const root = $("#root"), drawer = $("#drawer"), toastEl = $("#toast");
+  const nf = new Intl.NumberFormat("en-GB");
+  const num = n => nf.format(Number(n) || 0);
+  const LOOKING = { relationship: "A relationship", marriage: "Marriage", friendship: "New friends", not_sure: "Still figuring it out" };
+  const ACTIONS = {
+    suspend: "Suspended member", unsuspend: "Lifted suspension", remove_photo: "Removed a photo", delete_member: "Deleted member",
+    mark_test: "Marked as test account", unmark_test: "Unmarked test account", admin_add: "Added to admin team", admin_remove: "Removed from admin team",
+    report_reviewed: "Closed report (no action)", report_actioned: "Closed report (action taken)", report_open: "Reopened report",
+  };
+  const state = { me: null, tab: "overview", reportStatus: "open", memberFilter: "all", memberSearch: "", memberOffset: 0, openReports: 0 };
+
+  const ICON = {
+    overview: '<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>',
+    reports: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7"/>',
+    members: '<circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M17 11a3 3 0 1 0 0-6M22 21a6 6 0 0 0-5-5.9"/>',
+    team: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>',
+    activity: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  };
+  const svgI = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+  const MARK = '<svg width="28" height="28" viewBox="0 0 100 100" fill="none" stroke="url(#kg)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"><defs><linearGradient id="kg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F2436B"/><stop offset="1" stop-color="#FF8A3D"/></linearGradient></defs><path d="M43 27.5C36 20.5 24.5 21.5 18 32c-8 14 2 32 32 52"/><path d="M57 27.5C64 20.5 75.5 21.5 82 32c8 14-2 32-32 52" stroke-opacity=".82"/><circle cx="50" cy="16" r="5" fill="#F2436B" stroke="none"/></svg>';
+
+  function when(iso) {
+    if (!iso) return "—";
+    const d = new Date(iso), s = (Date.now() - d) / 1000;
+    if (s < 60) return "just now";
+    if (s < 3600) return Math.floor(s / 60) + " min ago";
+    if (s < 86400) return Math.floor(s / 3600) + " h ago";
+    if (s < 86400 * 7) return Math.floor(s / 86400) + " d ago";
+    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  }
+  const fullDate = iso => iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+  function friendly(e) {
+    const m = e?.message || String(e);
+    if (/invalid login/i.test(m)) return "Email or password is incorrect.";
+    if (/admins only/i.test(m)) return "Your account doesn't have admin access.";
+    if (/failed to fetch|network/i.test(m)) return "Can't reach Kindred. Check your connection.";
+    return m;
+  }
+  let tt;
+  function toast(m) { toastEl.textContent = m; toastEl.classList.add("show"); clearTimeout(tt); tt = setTimeout(() => toastEl.classList.remove("show"), 3200); }
+  async function rpc(name, args) { const { data, error } = await sb.rpc(name, args); if (error) throw error; return data; }
+  function avatar(p, size = 36) {
+    const url = p?.photo || p?.photos?.[0];
+    if (url) return `<img class="av" style="width:${size}px;height:${size}px" src="${esc(url)}" alt="" loading="lazy">`;
+    const hues = ["#EC3B63", "#7B5CFA", "#0E9F8E", "#F59E0B", "#DB2777", "#2F6FEB"];
+    let h = 0; for (const c of String(p?.id || p?.name || "?")) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    return `<span class="av" style="width:${size}px;height:${size}px;background:${hues[h % hues.length]}">${esc((p?.name || "?")[0].toUpperCase())}</span>`;
+  }
+  const storagePath = url => { const i = String(url).indexOf("/object/public/photos/"); return i < 0 ? null : decodeURIComponent(url.slice(i + "/object/public/photos/".length).split("?")[0]); };
+
+  /* ---------- dialogs ---------- */
+  function ask({ title, text = "", input = null, confirm = "Confirm", danger = false, select = null }) {
+    return new Promise(resolve => {
+      const d = document.createElement("dialog");
+      d.innerHTML = `<form method="dialog"><h3>${esc(title)}</h3>${text ? `<p class="muted" style="margin:0">${text}</p>` : ""}
+        ${select ? `<label class="f">${esc(select.label)}<select name="sel">${select.options.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")}</select></label>` : ""}
+        ${input ? `<label class="f">${esc(input.label)}<${input.multiline ? "textarea rows=3" : "input"} name="val" ${input.placeholder ? `placeholder="${esc(input.placeholder)}"` : ""} ${input.type ? `type="${input.type}"` : ""} autocomplete="off">${input.multiline ? "</textarea>" : ""}</label>` : ""}
+        <p class="err" id="derr"></p>
+        <div class="row"><button class="btn" value="cancel" type="button" data-x>Cancel</button><button class="btn ${danger ? "danger" : "primary"}" value="ok">${esc(confirm)}</button></div></form>`;
+      document.body.append(d);
+      const close = v => { d.close(); d.remove(); resolve(v); };
+      $("[data-x]", d).onclick = () => close(null);
+      d.addEventListener("cancel", e => { e.preventDefault(); close(null); });
+      $("form", d).onsubmit = e => {
+        e.preventDefault();
+        const val = d.querySelector("[name=val]")?.value?.trim() ?? true, sel = d.querySelector("[name=sel]")?.value;
+        if (input?.required && !val) { $("#derr", d).textContent = input.required; return; }
+        if (input?.mustEqual && val !== input.mustEqual) { $("#derr", d).textContent = `Type ${input.mustEqual} to confirm.`; return; }
+        close(select ? { val, sel } : val);
+      };
+      d.showModal();
+      (d.querySelector("[name=val]") || d.querySelector("[name=sel]"))?.focus();
+    });
+  }
+
+  /* ---------- sign in ---------- */
+  function renderSignIn(msg = "") {
+    root.innerHTML = `<div class="auth"><form class="box" id="signin">
+      <div class="brand">${MARK}kindred <small>Admin</small></div>
+      <h1>Admin sign in</h1><p class="muted" style="margin:0">Use your Kindred account. Only people on the admin team can open this console.</p>
+      <label class="f">Email<input name="email" type="email" autocomplete="username" required></label>
+      <label class="f">Password<input name="password" type="password" autocomplete="current-password" required></label>
+      <p class="err">${esc(msg)}</p>
+      <button class="btn primary block" type="submit">Sign in</button></form></div>`;
+    $("#signin").onsubmit = async e => {
+      e.preventDefault();
+      const f = e.target, btn = $("button", f);
+      btn.disabled = true; btn.innerHTML = '<span class="spin" style="width:18px;height:18px;border-width:2px"></span>';
+      const { error } = await sb.auth.signInWithPassword({ email: f.email.value.trim(), password: f.password.value });
+      if (error) { btn.disabled = false; btn.textContent = "Sign in"; $(".err", f).textContent = friendly(error); return; }
+      boot();
+    };
+  }
+
+  async function boot() {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return renderSignIn();
+    let me;
+    try { me = await rpc("admin_me"); } catch (e) { return renderSignIn(friendly(e)); }
+    if (!me) {
+      root.innerHTML = `<div class="auth"><div class="box"><div class="brand">${MARK}kindred <small>Admin</small></div>
+        <h1>No admin access</h1><p class="muted">You're signed in as <b>${esc(session.user.email)}</b>, but this account isn't on the Kindred admin team. Ask a super admin to add you.</p>
+        <button class="btn block" id="out">Sign out</button></div></div>`;
+      $("#out").onclick = async () => { await sb.auth.signOut(); renderSignIn(); };
+      return;
+    }
+    state.me = me;
+    const t = location.hash.slice(1);
+    state.tab = ["overview", "reports", "members", "team", "activity"].includes(t) ? t : "overview";
+    renderShell();
+  }
+
+  /* ---------- shell ---------- */
+  function renderShell() {
+    const tabs = [["overview", "Overview"], ["reports", "Reports"], ["members", "Members"], ["team", "Admin team"], ["activity", "Activity log"]];
+    root.innerHTML = `<div class="shell"><aside class="side">
+      <div class="brand">${MARK}kindred <small>Admin</small></div>
+      <nav class="nav">${tabs.map(([k, l]) => `<a href="#${k}" data-tab="${k}" class="${state.tab === k ? "on" : ""}">${svgI(ICON[k === "team" ? "team" : k])}${l}${k === "reports" ? `<span class="count" id="rc" ${state.openReports ? "" : "hidden"}>${state.openReports}</span>` : ""}</a>`).join("")}</nav>
+      <div class="me"><b>${esc(state.me.name || state.me.email)}</b><span class="muted">${esc(state.me.email)}</span><div style="margin:8px 0"><span class="role ${state.me.role}">${state.me.role === "super_admin" ? "Super admin" : "Moderator"}</span></div>
+        <button class="btn sm" id="out">Sign out</button> <a class="btn sm ghost" href="../app/">Open app</a></div>
+      </aside><main id="main"></main></div>`;
+    $$("[data-tab]").forEach(a => a.onclick = e => { e.preventDefault(); go(a.dataset.tab); });
+    $("#out").onclick = async () => { await sb.auth.signOut(); renderSignIn(); };
+    go(state.tab);
+    refreshReportCount();
+  }
+  function go(tab) {
+    state.tab = tab;
+    history.replaceState(null, "", "#" + tab);
+    $$("[data-tab]").forEach(a => a.classList.toggle("on", a.dataset.tab === tab));
+    ({ overview: viewOverview, reports: viewReports, members: viewMembers, team: viewTeam, activity: viewActivity })[tab]();
+  }
+  async function refreshReportCount() {
+    try { const s = await rpc("admin_reports", { p_status: "open", p_limit: 500 }); state.openReports = s.length; const el = $("#rc"); if (el) { el.textContent = s.length; el.hidden = !s.length; } } catch { /* ignore */ }
+  }
+  const main = () => $("#main");
+  const loading = () => { main().innerHTML = '<div class="boot" style="min-height:40vh"><span class="spin"></span></div>'; };
+  const failed = e => { main().innerHTML = `<div class="card empty">Couldn't load this page: ${esc(friendly(e))}</div>`; };
+
+  /* ---------- overview ---------- */
+  async function viewOverview() {
+    loading();
+    let s;
+    try { s = await rpc("admin_stats"); } catch (e) { return failed(e); }
+    const likeRate = s.likes + s.passes ? Math.round((100 * s.likes) / (s.likes + s.passes)) : 0;
+    const tile = (label, n, note, alert) => `<div class="card tile ${alert ? "alert" : ""}"><div class="label">${label}</div><div class="num">${num(n)}</div>${note ? `<div class="note">${note}</div>` : ""}</div>`;
+    main().innerHTML = `<div class="head"><div><h1>Overview</h1><p>Real members only. ${num(s.test_accounts)} test and reviewer account${s.test_accounts === 1 ? " is" : "s are"} left out.</p></div>
+        <button class="btn sm" id="rf">Refresh</button></div>
+      <div class="tiles">
+        ${tile("Members", s.members, `${num(s.onboarded)} finished their profile`)}
+        ${tile("New this week", s.new_7d, `${num(s.new_30d)} in the last 30 days`)}
+        ${tile("Active today", s.active_24h, `${num(s.active_7d)} active this week`)}
+        ${tile("Matches", s.matches, `${num(s.matches_7d)} this week`)}
+        ${tile("Messages", s.messages, `${num(s.messages_7d)} this week`)}
+        ${tile("Open reports", s.reports_open, `${num(s.reports_total)} report${s.reports_total === 1 ? "" : "s"} in total`, s.reports_open > 0)}
+      </div>
+      <div class="grid2">
+        <div class="card"><h2>New members per day</h2><p class="sub">Last 30 days</p><div id="signups"></div></div>
+        <div class="card"><h2>Engagement</h2><p class="sub">All time</p>
+          <div class="hbars">${hbarRows([["Likes given", s.likes], ["Passes", s.passes]], true)}</div>
+          <p class="sub" style="margin:16px 0 0">Like rate <b style="color:var(--text)">${likeRate}%</b> of swipes · Suspended members <b style="color:var(--text)">${num(s.suspended)}</b></p></div>
+      </div>
+      <div class="grid3">
+        <div class="card"><h2>Top towns</h2><p class="sub">Where members live</p><div class="hbars">${hbarRows((s.top_cities || []).map(c => [c.label, c.count]))}</div></div>
+        <div class="card"><h2>Age groups</h2><p class="sub">Members with a date of birth</p><div class="hbars">${hbarRows((s.age_groups || []).map(c => [c.label, c.count]))}</div></div>
+        <div class="card"><h2>Looking for</h2><p class="sub">Women ${num(s.women)} · Men ${num(s.men)}</p><div class="hbars">${hbarRows((s.looking_for || []).map(c => [LOOKING[c.label] || c.label, c.count]))}</div></div>
+      </div>`;
+    $("#rf").onclick = viewOverview;
+    barChart($("#signups"), (s.signups_daily || []).map(d => ({ label: d.day, value: d.count })));
+  }
+  function hbarRows(rows, keepZero) {
+    rows = rows.filter(([, v]) => keepZero || v > 0);
+    if (!rows.length) return '<p class="empty" style="padding:10px">No data yet</p>';
+    const max = Math.max(...rows.map(r => r[1]), 1);
+    return rows.map(([k, v]) => `<div class="hb" title="${esc(k)}: ${num(v)}"><span class="k">${esc(k)}</span><span class="track"><span class="fill" style="width:${v ? Math.max(2, (100 * v) / max) : 0}%"></span></span><span class="v">${num(v)}</span></div>`).join("");
+  }
+  function barChart(el, data) {
+    const narrow = el.clientWidth < 520;
+    const W = narrow ? 360 : 640, H = narrow ? 240 : 220, pad = { l: 30, r: 6, t: 10, b: 26 };
+    const max = Math.max(1, ...data.map(d => d.value));
+    const step = Math.max(1, Math.ceil(max / 4));
+    const top = step * Math.ceil(max / step);
+    const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b, bw = iw / data.length;
+    const y = v => pad.t + ih - (ih * v) / top;
+    let g = "";
+    for (let v = 0; v <= top; v += step) g += `<line class="gl" x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}"/><text class="ax" x="${pad.l - 8}" y="${y(v) + 4}" text-anchor="end">${v}</text>`;
+    const fmt = d => new Date(d + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+    let bars = "";
+    data.forEach((d, i) => {
+      const x = pad.l + i * bw + 1, w = Math.max(2, bw - 2), yy = y(d.value), h = pad.t + ih - yy;
+      bars += `<rect class="hit" x="${pad.l + i * bw}" y="${pad.t}" width="${bw}" height="${ih}" data-i="${i}"/>`;
+      if (d.value > 0) bars += `<path class="bar" data-b="${i}" d="M${x},${pad.t + ih} V${yy + Math.min(4, h)} q0,-${Math.min(4, h)} ${Math.min(4, w / 2)},-${Math.min(4, h)} H${x + w - Math.min(4, w / 2)} q${Math.min(4, w / 2)},0 ${Math.min(4, w / 2)},${Math.min(4, h)} V${pad.t + ih} Z"/>`;
+      if (i === 0 || i === data.length - 1 || (i % (narrow ? 14 : 7) === 0 && i < data.length - (narrow ? 8 : 4))) bars += `<text class="ax" x="${pad.l + i * bw + bw / 2}" y="${H - 6}" text-anchor="middle">${fmt(d.label)}</text>`;
+    });
+    el.innerHTML = `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="New members per day for the last 30 days">${g}${bars}</svg><div class="tip"></div></div>
+      <details class="tv"><summary>Show as table</summary><table><thead><tr><th>Day</th><th>New members</th></tr></thead><tbody>${data.map(d => `<tr><td>${fmt(d.label)}</td><td>${d.value}</td></tr>`).join("")}</tbody></table></details>`;
+    const tip = $(".tip", el), svg = $("svg", el);
+    $$(".hit", el).forEach(h => {
+      h.addEventListener("mouseenter", () => {
+        const i = +h.dataset.i, d = data[i], r = svg.getBoundingClientRect(), sx = r.width / W;
+        $$(".bar", el).forEach(b => b.classList.toggle("hl", b.dataset.b === String(i)));
+        tip.innerHTML = `${fmt(d.label)} · <b>${d.value}</b> new`;
+        tip.style.left = (pad.l + i * bw + bw / 2) * sx + "px"; tip.style.top = y(d.value) * sx + "px"; tip.classList.add("on");
+      });
+      h.addEventListener("mouseleave", () => { tip.classList.remove("on"); $$(".bar", el).forEach(b => b.classList.remove("hl")); });
+    });
+  }
+
+  /* ---------- reports ---------- */
+  async function viewReports() {
+    const tabs = [["open", "Open"], ["reviewed", "Closed, no action"], ["actioned", "Action taken"], ["all", "All"]];
+    main().innerHTML = `<div class="head"><div><h1>Reports</h1><p>Handle the oldest open reports first. Evidence is the chat as it was when the report was sent.</p></div></div>
+      <div class="toolbar"><div class="seg">${tabs.map(([k, l]) => `<button data-s="${k}" class="${state.reportStatus === k ? "on" : ""}">${l}</button>`).join("")}</div></div><div id="rl"></div>`;
+    $$("[data-s]").forEach(b => b.onclick = () => { state.reportStatus = b.dataset.s; viewReports(); });
+    const list = $("#rl");
+    list.innerHTML = '<div class="boot" style="min-height:30vh"><span class="spin"></span></div>';
+    let rows;
+    try { rows = await rpc("admin_reports", { p_status: state.reportStatus, p_limit: 200 }); } catch (e) { list.innerHTML = `<div class="card empty">${esc(friendly(e))}</div>`; return; }
+    if (state.reportStatus === "open") rows.reverse();
+    if (!rows.length) { list.innerHTML = `<div class="card empty">${state.reportStatus === "open" ? "No open reports. Nice." : "Nothing here yet."}</div>`; return; }
+    list.innerHTML = rows.map(r => {
+      const ev = r.evidence || {}, msgs = ev.messages || [], rep = r.reported || {};
+      const status = { open: '<span class="badge warn">Open</span>', reviewed: '<span class="badge">Closed, no action</span>', actioned: '<span class="badge good">Action taken</span>' }[r.status];
+      return `<div class="card report" data-id="${r.id}">
+        <div class="top"><div><div class="reason">${esc(r.reason)}</div>
+          <div class="who">${r.reporter ? `<a data-member="${r.reporter.id}">${esc(r.reporter.name)}</a>` : "A deleted member"} reported <a data-member="${rep.id}">${esc(rep.name)}</a>
+            ${rep.reports_against > 1 ? `<span class="badge bad">${rep.reports_against} reports against them</span>` : ""}${rep.banned_at ? '<span class="badge bad">Suspended</span>' : ""} · ${when(r.created_at)}</div></div>
+          <div>${status}</div></div>
+        ${r.details ? `<div class="details">“${esc(r.details)}”</div>` : ""}
+        <div class="evidence"><h4>Evidence</h4>
+          ${ev.profile?.photos?.length ? `<div class="thumbs" style="margin-bottom:10px">${ev.profile.photos.map(u => `<div class="thumb"><img src="${esc(u)}" alt="" loading="lazy"></div>`).join("")}</div>` : ""}
+          ${ev.profile?.bio ? `<p style="margin:0 0 10px;font-size:14px"><b>Bio:</b> ${esc(ev.profile.bio)}</p>` : ""}
+          ${msgs.length ? `<div class="msgs">${msgs.map(m => `<div class="msg ${m.from}"><small>${m.from === "reported" ? esc(rep.name) : "Reporter"} · ${fullDate(m.at)}</small>${esc(m.body)}</div>`).join("")}</div>` : '<p class="muted" style="margin:0;font-size:14px">No messages between them.</p>'}
+        </div>
+        ${r.resolution_note || r.resolved_by ? `<p class="muted" style="font-size:13px;margin:10px 0 0">${r.resolved_by ? `Closed by ${esc(r.resolved_by)} ${when(r.resolved_at)}` : ""}${r.resolution_note ? ` — “${esc(r.resolution_note)}”` : ""}</p>` : ""}
+        <div class="actions">
+          ${r.status === "open" ? `${rep.banned_at ? "" : `<button class="btn sm danger" data-act="suspend-close">Suspend ${esc(rep.name)} &amp; close</button>`}
+             <button class="btn sm" data-act="actioned">Close: action taken</button><button class="btn sm" data-act="reviewed">Close: no action needed</button>`
+          : `<button class="btn sm" data-act="open">Reopen</button>`}
+          <button class="btn sm ghost" data-member="${rep.id}">View ${esc(rep.name)}</button>
+        </div></div>`;
+    }).join("");
+    $$("[data-member]", list).forEach(a => a.onclick = () => openMember(a.dataset.member));
+    $$(".report [data-act]", list).forEach(b => b.onclick = async () => {
+      const card = b.closest(".report"), id = card.dataset.id, r = rows.find(x => x.id === id), act = b.dataset.act;
+      try {
+        if (act === "suspend-close") {
+          const reason = await ask({ title: `Suspend ${r.reported.name}?`, text: "They'll be signed out, can't sign back in, and disappear from every feed and chat. You can lift this later.", input: { label: "Reason (kept in the log)", required: "Give a reason.", multiline: true, placeholder: r.reason }, confirm: "Suspend", danger: true });
+          if (!reason) return;
+          await rpc("admin_suspend", { p_user: r.reported.id, p_reason: reason });
+          await rpc("admin_resolve_report", { p_id: id, p_status: "actioned", p_note: "Suspended: " + reason });
+          toast(`${r.reported.name} suspended and report closed`);
+        } else if (act === "open") {
+          await rpc("admin_resolve_report", { p_id: id, p_status: "open", p_note: null });
+          toast("Report reopened");
+        } else {
+          const note = await ask({ title: act === "actioned" ? "Close: action taken" : "Close: no action needed", input: { label: "Note for the team (optional)", multiline: true }, confirm: "Close report" });
+          if (note === null) return;
+          await rpc("admin_resolve_report", { p_id: id, p_status: act, p_note: note || null });
+          toast("Report closed");
+        }
+        refreshReportCount(); viewReports();
+      } catch (e) { toast(friendly(e)); }
+    });
+  }
+
+  /* ---------- members ---------- */
+  async function viewMembers() {
+    const filters = [["all", "All"], ["reported", "Reported"], ["suspended", "Suspended"], ["incomplete", "Profile not finished"], ["admins", "Admins"], ["test", "Test accounts"]];
+    main().innerHTML = `<div class="head"><div><h1>Members</h1><p>Search by name, email or town. Click a member to see their full profile and take action.</p></div></div>
+      <div class="toolbar"><input type="search" id="q" placeholder="Search members…" value="${esc(state.memberSearch)}">
+        <div class="seg">${filters.map(([k, l]) => `<button data-f="${k}" class="${state.memberFilter === k ? "on" : ""}">${l}</button>`).join("")}</div></div>
+      <div id="ml"></div>`;
+    let t;
+    $("#q").oninput = e => { clearTimeout(t); t = setTimeout(() => { state.memberSearch = e.target.value; state.memberOffset = 0; loadMembers(); }, 300); };
+    $$("[data-f]").forEach(b => b.onclick = () => { state.memberFilter = b.dataset.f; state.memberOffset = 0; $$("[data-f]").forEach(x => x.classList.toggle("on", x === b)); loadMembers(); });
+    loadMembers();
+  }
+  async function loadMembers() {
+    const el = $("#ml"), size = 50;
+    el.innerHTML = '<div class="boot" style="min-height:30vh"><span class="spin"></span></div>';
+    let res;
+    try { res = await rpc("admin_members", { p_search: state.memberSearch || null, p_filter: state.memberFilter, p_limit: size, p_offset: state.memberOffset }); }
+    catch (e) { el.innerHTML = `<div class="card empty">${esc(friendly(e))}</div>`; return; }
+    if (!res.rows.length) { el.innerHTML = '<div class="card empty">No members match.</div>'; return; }
+    el.innerHTML = `<div class="tablewrap"><table><thead><tr><th>Member</th><th>Age</th><th>Town</th><th>Joined</th><th>Last active</th><th>Status</th></tr></thead><tbody>
+      ${res.rows.map(m => `<tr class="click" data-member="${m.id}"><td><div class="person">${avatar(m)}<div><b>${esc(m.name)}</b><span>${esc(m.email)}</span></div></div></td>
+        <td>${m.age ?? "—"} ${m.gender ? `<span class="muted">${m.gender === "woman" ? "F" : "M"}</span>` : ""}</td><td>${esc(m.city || "—")}</td>
+        <td class="muted">${when(m.created_at)}</td><td class="muted">${when(m.last_active)}</td>
+        <td>${m.banned_at ? '<span class="badge bad">Suspended</span>' : ""}${m.reports_against ? `<span class="badge warn">${m.reports_against} report${m.reports_against > 1 ? "s" : ""}</span>` : ""}${!m.onboarded ? '<span class="badge">Profile not finished</span>' : ""}${m.admin_role ? `<span class="badge info">${m.admin_role === "super_admin" ? "Super admin" : "Moderator"}</span>` : ""}${m.is_test ? '<span class="badge">Test</span>' : ""}</td></tr>`).join("")}
+      </tbody></table></div>
+      <div class="pager"><span>${num(state.memberOffset + 1)}–${num(state.memberOffset + res.rows.length)} of ${num(res.total)}</span>
+        <span><button class="btn sm" id="prev" ${state.memberOffset ? "" : "disabled"}>Previous</button> <button class="btn sm" id="next" ${state.memberOffset + size < res.total ? "" : "disabled"}>Next</button></span></div>`;
+    $$("[data-member]", el).forEach(r => r.onclick = () => openMember(r.dataset.member));
+    $("#prev").onclick = () => { state.memberOffset = Math.max(0, state.memberOffset - size); loadMembers(); };
+    $("#next").onclick = () => { state.memberOffset += size; loadMembers(); };
+  }
+
+  function closeDrawer() { drawer.classList.remove("open"); drawer.setAttribute("aria-hidden", "true"); setTimeout(() => { if (!drawer.classList.contains("open")) drawer.innerHTML = ""; }, 260); }
+  async function openMember(id) {
+    drawer.innerHTML = '<div class="scrim"></div><div class="panel"><div class="boot" style="min-height:50vh"><span class="spin"></span></div></div>';
+    drawer.classList.add("open"); drawer.setAttribute("aria-hidden", "false");
+    $(".scrim", drawer).onclick = closeDrawer;
+    let m;
+    try { m = await rpc("admin_member", { p_id: id }); } catch (e) { $(".panel", drawer).innerHTML = `<p class="err">${esc(friendly(e))}</p>`; return; }
+    if (!m) { $(".panel", drawer).innerHTML = '<p class="empty">This member no longer exists.</p>'; return; }
+    const superA = state.me.role === "super_admin", c = m.counts || {};
+    $(".panel", drawer).innerHTML = `<button class="btn sm x" data-close>Close</button>
+      <div class="person" style="margin-top:4px">${avatar(m, 56)}<div><b style="font-size:20px">${esc(m.name)}${m.age ? `, ${m.age}` : ""}</b><span>${esc(m.email)}</span></div></div>
+      <div style="margin-top:10px">${m.banned_at ? `<span class="badge bad">Suspended ${when(m.banned_at)}</span>` : '<span class="badge good">Active account</span>'}${m.admin_role ? `<span class="badge info">${m.admin_role === "super_admin" ? "Super admin" : "Moderator"}</span>` : ""}${m.is_test ? '<span class="badge">Test account</span>' : ""}${m.email_confirmed ? "" : '<span class="badge warn">Email not confirmed</span>'}${m.onboarded ? "" : '<span class="badge">Profile not finished</span>'}</div>
+      ${m.banned_at && m.ban_reason ? `<p class="details" style="margin-top:10px;padding:10px 12px;background:var(--surface-2);border-radius:10px">Suspension reason: ${esc(m.ban_reason)}</p>` : ""}
+      <div class="counts"><div><b>${num(c.matches)}</b><span>Matches</span></div><div><b>${num(c.messages_sent)}</b><span>Messages sent</span></div><div><b>${num(c.likes_received)}</b><span>Likes received</span></div><div><b>${num(c.reports_against)}</b><span>Reports against</span></div></div>
+      <h3>Photos</h3>${m.photos?.length ? `<div class="thumbs">${m.photos.map(u => `<div class="thumb"><img src="${esc(u)}" alt="" loading="lazy"><button data-rmphoto="${esc(u)}">Remove</button></div>`).join("")}</div>` : '<p class="muted">No photos.</p>'}
+      <h3>Profile</h3>
+      <dl class="kv"><dt>Gender</dt><dd>${esc(m.gender || "—")} · shows ${esc(m.show_me)}</dd><dt>Town</dt><dd>${esc(m.city || "—")}</dd><dt>Work</dt><dd>${esc(m.job || "—")}</dd>
+        <dt>Looking for</dt><dd>${esc(LOOKING[m.looking_for] || "—")}</dd><dt>Bio</dt><dd>${esc(m.bio || "—")}</dd>
+        <dt>Interests</dt><dd>${esc((m.interests || []).join(", ") || "—")}</dd><dt>Languages</dt><dd>${esc((m.languages || []).join(", ") || "—")}</dd>
+        <dt>Joined</dt><dd>${fullDate(m.created_at)}</dd><dt>Last signed in</dt><dd>${fullDate(m.last_sign_in_at)}</dd><dt>Last active</dt><dd>${fullDate(m.last_active)}</dd>
+        <dt>Likes given</dt><dd>${num(c.likes_given)}</dd><dt>Blocked by</dt><dd>${num(c.blocked_by)} member${c.blocked_by === 1 ? "" : "s"}</dd><dt>Reports made</dt><dd>${num(c.reports_made)}</dd></dl>
+      ${m.reports_against?.length ? `<h3>Reports against ${esc(m.name)}</h3>${m.reports_against.map(r => `<div style="font-size:14px;margin-bottom:6px">${esc(r.reason)} <span class="muted">· ${when(r.created_at)}</span> <span class="badge ${r.status === "open" ? "warn" : r.status === "actioned" ? "good" : ""}">${({ open: "Open", reviewed: "Closed, no action", actioned: "Action taken" })[r.status] || r.status}</span></div>`).join("")}` : ""}
+      <h3>Actions</h3><div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${m.banned_at ? '<button class="btn" data-a="unsuspend">Lift suspension</button>' : '<button class="btn danger" data-a="suspend">Suspend member</button>'}
+        ${superA && !m.admin_role ? '<button class="btn" data-a="make-admin">Add to admin team</button>' : ""}
+        ${superA ? `<button class="btn" data-a="test">${m.is_test ? "Unmark test account" : "Mark as test account"}</button>` : ""}</div>
+      ${superA ? `<div class="danger-zone"><b>Delete member</b><p class="muted" style="margin:4px 0 10px;font-size:14px">Permanently removes their account, photos, matches and messages. Can't be undone.</p><button class="btn danger sm" data-a="delete">Delete ${esc(m.name)}</button></div>` : ""}`;
+    $("[data-close]", drawer).onclick = closeDrawer;
+    const act = async (fn, msg) => { try { await fn(); if (msg) toast(msg); openMember(id); if (state.tab === "members") loadMembers(); } catch (e) { toast(friendly(e)); } };
+    $$("[data-rmphoto]", drawer).forEach(b => b.onclick = async () => {
+      if (!(await ask({ title: "Remove this photo?", text: "It's taken off their profile and deleted from storage.", confirm: "Remove photo", danger: true }))) return;
+      act(async () => { await rpc("admin_remove_photo", { p_user: id, p_url: b.dataset.rmphoto }); const p = storagePath(b.dataset.rmphoto); if (p) await sb.storage.from("photos").remove([p]); }, "Photo removed");
+    });
+    const on = (k, fn) => { const b = $(`[data-a="${k}"]`, drawer); if (b) b.onclick = fn; };
+    on("suspend", async () => {
+      const reason = await ask({ title: `Suspend ${m.name}?`, text: "They'll be signed out, can't sign back in, and disappear from every feed and chat.", input: { label: "Reason (kept in the log)", required: "Give a reason.", multiline: true }, confirm: "Suspend", danger: true });
+      if (reason) act(() => rpc("admin_suspend", { p_user: id, p_reason: reason }), `${m.name} suspended`);
+    });
+    on("unsuspend", async () => { if (await ask({ title: `Lift ${m.name}'s suspension?`, text: "They'll be able to sign in and appear in feeds again.", confirm: "Lift suspension" })) act(() => rpc("admin_unsuspend", { p_user: id }), "Suspension lifted"); });
+    on("test", () => act(() => rpc("admin_set_test", { p_user: id, p_is_test: !m.is_test }), m.is_test ? "Now a real member" : "Moved to the test pool"));
+    on("make-admin", async () => {
+      const r = await ask({ title: `Add ${m.name} to the admin team`, text: "Moderators handle reports and members. Super admins can also manage the team and delete accounts.", select: { label: "Role", options: [["moderator", "Moderator"], ["super_admin", "Super admin"]] }, confirm: "Add to team" });
+      if (r) act(() => rpc("admin_add", { p_email: m.email, p_role: r.sel }), `${m.name} added as ${r.sel === "super_admin" ? "super admin" : "moderator"}`);
+    });
+    on("delete", async () => {
+      const ok = await ask({ title: `Delete ${m.name}?`, text: "This permanently deletes the account and everything in it.", input: { label: "Type DELETE to confirm", mustEqual: "DELETE" }, confirm: "Delete forever", danger: true });
+      if (!ok) return;
+      try {
+        const { data: files } = await sb.storage.from("photos").list(id, { limit: 100 });
+        if (files?.length) await sb.storage.from("photos").remove(files.map(f => `${id}/${f.name}`));
+        await rpc("admin_delete_member", { p_user: id });
+        toast(`${m.name} deleted`); closeDrawer(); if (state.tab === "members") loadMembers();
+      } catch (e) { toast(friendly(e)); }
+    });
+  }
+
+  /* ---------- team ---------- */
+  async function viewTeam() {
+    loading();
+    let team;
+    try { team = await rpc("admin_team"); } catch (e) { return failed(e); }
+    const superA = state.me.role === "super_admin";
+    main().innerHTML = `<div class="head"><div><h1>Admin team</h1><p><b>Moderators</b> handle reports, suspensions and photos. <b>Super admins</b> can also add or remove team members and delete accounts.</p></div></div>
+      ${superA ? `<form class="card" id="add" style="margin-bottom:16px"><h2>Add someone to the team</h2><p class="sub">They need a Kindred account first. Ask them to sign up at kindred-sl.netlify.app/app, then enter their email here.</p>
+        <div class="toolbar" style="margin:0"><input type="search" name="email" placeholder="their-email@example.com" required style="flex:1;min-width:220px;height:40px;padding:0 14px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface)">
+        <select name="role" style="height:40px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);padding:0 10px"><option value="moderator">Moderator</option><option value="super_admin">Super admin</option></select>
+        <button class="btn primary" type="submit">Add to team</button></div><p class="err" id="adderr"></p></form>` : '<div class="card" style="margin-bottom:16px"><p class="muted" style="margin:0">Only super admins can change the team.</p></div>'}
+      <div class="tablewrap"><table><thead><tr><th>Member</th><th>Role</th><th>Added by</th><th>Since</th><th>Last signed in</th>${superA ? "<th></th>" : ""}</tr></thead><tbody>
+        ${team.map(a => `<tr><td><div class="person">${avatar({ id: a.user_id, name: a.name })}<div><b>${esc(a.name || "—")}${a.user_id === (sbUser?.id) ? ' <span class="muted">(you)</span>' : ""}</b><span>${esc(a.email)}</span></div></div></td>
+          <td><span class="role ${a.role}">${a.role === "super_admin" ? "Super admin" : "Moderator"}</span></td><td class="muted">${esc(a.added_by || "—")}</td><td class="muted">${when(a.created_at)}</td><td class="muted">${when(a.last_sign_in_at)}</td>
+          ${superA ? `<td style="text-align:right;white-space:nowrap">${a.role === "moderator" ? `<button class="btn sm" data-promote="${a.user_id}" data-email="${esc(a.email)}">Make super admin</button>` : ""} <button class="btn sm" data-remove="${a.user_id}" data-name="${esc(a.name || a.email)}">Remove</button></td>` : ""}</tr>`).join("")}
+      </tbody></table></div>`;
+    if (superA) {
+      $("#add").onsubmit = async e => {
+        e.preventDefault();
+        const f = e.target;
+        try { await rpc("admin_add", { p_email: f.email.value.trim(), p_role: f.role.value }); toast("Added to the admin team"); viewTeam(); }
+        catch (err) { $("#adderr").textContent = friendly(err); }
+      };
+      $$("[data-promote]").forEach(b => b.onclick = async () => { try { await rpc("admin_add", { p_email: b.dataset.email, p_role: "super_admin" }); toast("Promoted to super admin"); viewTeam(); } catch (e) { toast(friendly(e)); } });
+      $$("[data-remove]").forEach(b => b.onclick = async () => {
+        if (!(await ask({ title: `Remove ${b.dataset.name} from the team?`, text: "They keep their member account but lose admin access.", confirm: "Remove", danger: true }))) return;
+        try { await rpc("admin_remove", { p_user: b.dataset.remove }); toast("Removed from the team"); if (b.dataset.remove === sbUser?.id) return boot(); viewTeam(); } catch (e) { toast(friendly(e)); }
+      });
+    }
+  }
+
+  /* ---------- activity ---------- */
+  async function viewActivity() {
+    loading();
+    let log;
+    try { log = await rpc("admin_audit_log", { p_limit: 300 }); } catch (e) { return failed(e); }
+    main().innerHTML = `<div class="head"><div><h1>Activity log</h1><p>Every admin action, newest first. This log can't be edited.</p></div></div>
+      ${log.length ? `<div class="tablewrap"><table><thead><tr><th>When</th><th>Admin</th><th>Action</th><th>Member</th><th>Details</th></tr></thead><tbody>
+        ${log.map(l => `<tr><td class="muted" title="${fullDate(l.created_at)}">${when(l.created_at)}</td><td>${esc(l.admin_email || "—")}</td><td><b>${esc(ACTIONS[l.action] || l.action)}</b></td>
+          <td>${l.target && l.action !== "delete_member" ? `<a href="#" data-member="${l.target}">${esc(l.target_name || "member")}</a>` : esc(l.details?.name || l.target_name || "—")}</td>
+          <td class="muted" style="max-width:320px">${esc(l.details?.reason || l.details?.note || l.details?.role || "")}</td></tr>`).join("")}
+      </tbody></table></div>` : '<div class="card empty">No admin actions yet.</div>'}`;
+    $$("[data-member]").forEach(a => a.onclick = e => { e.preventDefault(); openMember(a.dataset.member); });
+  }
+
+  let sbUser = null;
+  sb.auth.onAuthStateChange((_e, s) => { sbUser = s?.user || null; });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && drawer.classList.contains("open")) closeDrawer(); });
+  boot();
+})();
