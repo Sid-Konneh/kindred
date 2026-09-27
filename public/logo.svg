@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 120" role="img" aria-label="Kindred">
+  <defs>
+    <linearGradient id="k" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F2436B"/>
+      <stop offset="1" stop-color="#FF8A3D"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(4 6) scale(1.1)" fill="none" stroke="url(#k)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M43 27.5C36 20.5 24.5 21.5 18 32c-8 14 2 32 32 52"/>
+    <path d="M57 27.5C64 20.5 75.5 21.5 82 32c8 14-2 32-32 52" stroke-opacity=".82"/>
+  </g>
+  <circle cx="59" cy="23.6" r="5" fill="#F2436B"/>
+  <text x="124" y="84" font-family="Fraunces, Georgia, serif" font-weight="600" font-size="72" letter-spacing="-1.5" fill="#1D1A1F">kindred</text>
+</svg>
