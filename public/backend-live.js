@@ -1,7 +1,7 @@
 "use strict";
 /* ============ live backend (Supabase) ============
    Same interface as backend-demo.js. Everything sensitive (matching, feed, deleting an
-   account) runs in database functions defined in supabase/schema.sql, under row level security. */
+   account) runs in database functions defined in supabase/migrations, under row level security. */
 window.KindredLive = function (cfg) {
   const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce" },
