@@ -1,6 +1,9 @@
 import 'dart:convert';
+import 'dart:math';
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -98,6 +101,47 @@ class Api {
     if (uid != null) await sb.from('profiles').update({'last_active': DateTime.now().toUtc().toIso8601String()}).eq('id', uid!);
   }
 
+  /// Records which device the member uses (for account security and support). The device key is a
+  /// random id created once per install, not a hardware identifier.
+  static Future<void> registerDevice(bool newSignIn) async {
+    if (uid == null) return;
+    var key = Cache.getPref('device', '');
+    if (key.isEmpty) {
+      final r = Random.secure();
+      key = List.generate(16, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+      await Cache.setPref('device', key);
+    }
+    String platform = 'web', os = '', browser = '';
+    String? model;
+    final info = DeviceInfoPlugin();
+    if (kIsWeb) {
+      final w = await info.webBrowserInfo;
+      browser = w.browserName.name;
+      os = w.platform ?? '';
+    } else if (defaultTargetPlatform == TargetPlatform.android) {
+      final a = await info.androidInfo;
+      platform = 'android_app';
+      os = 'Android ${a.version.release}';
+      final maker = a.manufacturer.isEmpty ? '' : '${a.manufacturer[0].toUpperCase()}${a.manufacturer.substring(1)} ';
+      model = '$maker${a.model}'.trim();
+    } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+      final i = await info.iosInfo;
+      platform = 'ios_app';
+      os = 'iOS ${i.systemVersion}';
+      model = i.utsname.machine;
+    }
+    final pkg = await PackageInfo.fromPlatform();
+    await sb.rpc('register_device', params: {
+      'p_key': key,
+      'p_platform': platform,
+      'p_os': os.isEmpty ? null : os,
+      'p_browser': browser.isEmpty ? null : browser,
+      'p_model': model,
+      'p_app_version': kIsWeb ? null : '${pkg.version} (${pkg.buildNumber})',
+      'p_new_sign_in': newSignIn,
+    });
+  }
+
   static Future<String> uploadPhoto(Uint8List bytes, String name) async {
     final ext = name.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
     final path = '$uid/${DateTime.now().microsecondsSinceEpoch}.$ext';
@@ -188,6 +232,7 @@ class AppState extends ChangeNotifier {
       me = await Api.me();
       await Cache.set('me', me!.toJson());
       Api.touch().catchError((_) {});
+      Api.registerDevice(changed).catchError((_) {});
     } catch (_) {/* keep cached profile when offline */}
     notifyListeners();
   }

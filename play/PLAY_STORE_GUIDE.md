@@ -87,8 +87,9 @@ Play Console → **Policy and programs → App content**. Google only allows the
 | Messages | Other in-app messages | Required | App functionality |
 | App activity | App interactions (likes, passes, matches, blocks, reports) | Required | App functionality |
 | App activity | Other user-generated content (bio) | Required | App functionality |
+| Device or other IDs | Device or other IDs (a random ID the app creates, plus phone model, Android version, app version) | Required | App functionality, Fraud prevention, security and compliance |
 
-Not collected: location, contacts, financial info, health, device IDs, crash logs, analytics.
+Not collected: location, contacts, financial info, health, crash logs, analytics.
 
 **Government apps:** No. **Financial features:** None. **Health:** None. **News app:** No.
 

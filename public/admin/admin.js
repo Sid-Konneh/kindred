@@ -351,12 +351,27 @@
           <h2 style="font-size:14px;margin-top:16px">Scam alerts by type</h2><div class="hbars" style="margin-top:8px">${hbarRows((sf.flags_by_category || []).map(x => [CATEGORY[x.label]?.[0] || x.label, x.count]))}</div></div>
         <div class="card"><h2>Most liked profiles</h2><p class="sub">Very popular brand-new profiles can be fake. Worth a look.</p><div class="hbars">${leaderList(ld.most_liked || [], "likes")}</div>
           <h2 style="margin-top:18px">Most active chatters</h2><p class="sub">Messages sent</p><div class="hbars">${leaderList(ld.most_messages || [], "sent")}</div></div>
-      </div>`;
+      </div>
+      <div class="card" style="margin-top:16px" id="devcard"><h2>Devices</h2><p class="sub">What members sign in with. Each member is counted once, by the device they used most recently.</p><div class="boot" style="min-height:120px"><span class="spin"></span></div></div>`;
     $("#rf").onclick = viewInsights;
     $$("[data-member]", main()).forEach(a => a.onclick = () => openMember(a.dataset.member));
     heatmap($("#heat"), d.heatmap || []);
     retention($("#ret"), d.retention || []);
+    rpc("admin_device_stats").then(ds => {
+      const card = $("#devcard"); if (!card) return;
+      const today = (ds.active_24h || []).map(x => `${num(x.count)} ${PLATFORM[x.label] || x.label}`).join(" · ");
+      card.innerHTML = `<h2>Devices</h2><p class="sub">What members sign in with. Each member is counted once, by the device they used most recently.</p>
+        ${ds.members_with_device ? `<div class="counts" style="margin:6px 0 16px"><div><b>${num(ds.members_with_device)}</b><span>Members with a device</span></div><div><b>${num(ds.devices)}</b><span>Devices in total</span></div><div><b>${num(ds.multi_device)}</b><span>Use 2+ devices</span></div><div><b style="font-size:14px;line-height:1.5">${today || "—"}</b><span>Active in the last 24 h</span></div></div>
+        <div class="grid3" style="gap:20px">
+          <div><h2 style="font-size:14px">App or website</h2><div class="hbars" style="margin-top:8px">${hbarRows((ds.platform || []).map(x => [PLATFORM[x.label] || x.label, x.count]))}</div>
+            <h2 style="font-size:14px;margin-top:16px">Android app versions</h2><div class="hbars" style="margin-top:8px">${hbarRows((ds.app_versions || []).map(x => [x.label, x.count]))}</div></div>
+          <div><h2 style="font-size:14px">Operating system</h2><div class="hbars" style="margin-top:8px">${hbarRows((ds.os || []).map(x => [x.label, x.count]))}</div>
+            <h2 style="font-size:14px;margin-top:16px">Web browsers</h2><div class="hbars" style="margin-top:8px">${hbarRows((ds.browser || []).map(x => [x.label, x.count]))}</div></div>
+          <div><h2 style="font-size:14px">Phone models</h2><div class="hbars" style="margin-top:8px">${hbarRows((ds.models || []).map(x => [x.label, x.count]))}</div></div>
+        </div>` : '<p class="empty">No device information yet. It appears as members sign in.</p>'}`;
+    }).catch(e => { const card = $("#devcard"); if (card) card.innerHTML = `<h2>Devices</h2><p class="empty">${esc(friendly(e))}</p>`; });
   }
+  const PLATFORM = { android_app: "Android app", ios_app: "iPhone app", web: "Website" };
   function heatmap(el, cells) {
     const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     const grid = Array.from({ length: 7 }, () => Array(24).fill(0));
@@ -545,6 +560,7 @@
         <dt>Joined</dt><dd>${fullDate(m.created_at)}</dd><dt>Last signed in</dt><dd>${fullDate(m.last_sign_in_at)}</dd><dt>Last active</dt><dd>${fullDate(m.last_active)}</dd>
         <dt>Likes given</dt><dd>${num(c.likes_given)}</dd><dt>Blocked by</dt><dd>${num(c.blocked_by)} member${c.blocked_by === 1 ? "" : "s"}</dd><dt>Reports made</dt><dd>${num(c.reports_made)}</dd></dl>
       ${m.reports_against?.length ? `<h3>Reports against ${esc(m.name)}</h3>${m.reports_against.map(r => `<div style="font-size:14px;margin-bottom:6px">${esc(r.reason)} <span class="muted">· ${when(r.created_at)}</span> <span class="badge ${r.status === "open" ? "warn" : r.status === "actioned" ? "good" : ""}">${({ open: "Open", reviewed: "Closed, no action", actioned: "Action taken" })[r.status] || r.status}</span></div>`).join("")}` : ""}
+      <h3>Devices</h3><div id="devices"><span class="muted" style="font-size:13px">Loading…</span></div>
       <h3>Private notes</h3><p class="muted" style="margin:-4px 0 8px;font-size:13px">Only the admin team can see these. The member never does.</p>
       <form id="noteform" style="display:flex;gap:8px"><input name="note" maxlength="2000" placeholder="e.g. Warned about sharing phone numbers" style="flex:1;height:38px;padding:0 12px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface)"><button class="btn sm primary" type="submit" style="height:38px">Add note</button></form>
       <div id="notes" style="margin-top:10px"><span class="muted" style="font-size:13px">Loading…</span></div>
@@ -567,6 +583,16 @@
       } catch (e) { box.innerHTML = `<span class="err">${esc(friendly(e))}</span>`; }
     };
     loadNotes();
+    rpc("admin_member_devices", { p_member: id }).then(devs => {
+      const box = $("#devices", drawer); if (!box) return;
+      const icon = pl => pl === "web" ? "🌐" : "📱";
+      box.innerHTML = devs.length ? devs.map(d => `<div style="display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;font-size:14px">
+          <span style="font-size:20px;line-height:1">${icon(d.platform)}</span>
+          <div style="flex:1;min-width:0"><b>${esc(PLATFORM[d.platform] || d.platform)}${d.model ? ` · ${esc(d.model)}` : ""}</b>
+            <div class="muted" style="font-size:13px">${esc([d.os, d.browser, d.app_version ? `App ${d.app_version}` : null].filter(Boolean).join(" · ") || "Details not available")}</div>
+            <div class="muted" style="font-size:12px;margin-top:2px">Last used ${when(d.last_seen)} · first seen ${fullDate(d.first_seen)} · ${num(d.sign_ins)} sign-in${d.sign_ins === 1 ? "" : "s"}</div></div></div>`).join("")
+        : '<span class="muted" style="font-size:13px">No devices recorded yet. They appear the next time this member opens Kindred.</span>';
+    }).catch(e => { const box = $("#devices", drawer); if (box) box.innerHTML = `<span class="err">${esc(friendly(e))}</span>`; });
     $("#noteform", drawer).onsubmit = async e => {
       e.preventDefault(); const inp = e.target.note, v = inp.value.trim(); if (!v) return;
       try { await rpc("admin_add_note", { p_member: id, p_body: v }); inp.value = ""; loadNotes(); } catch (err) { toast(friendly(err)); }

@@ -43,6 +43,9 @@ window.KindredLive = function (cfg) {
       return sb.storage.from("photos").getPublicUrl(path).data.publicUrl;
     },
     async touch() { if (uidCache) await sb.from("profiles").update({ last_active: new Date().toISOString() }).eq("id", uidCache); },
+    async registerDevice(d) {
+      await sb.rpc("register_device", { p_key: d.key, p_platform: d.platform, p_os: d.os, p_browser: d.browser, p_model: d.model, p_app_version: d.app_version, p_new_sign_in: d.new_sign_in });
+    },
 
     async getFeed({ city } = {}) { return must(await sb.rpc("discover_feed", { p_limit: 20, p_city: city || null })) || []; },
     async swipe(targetId, action) { return must(await sb.rpc("swipe", { p_target: targetId, p_action: action })); },

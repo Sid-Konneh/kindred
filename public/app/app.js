@@ -1076,6 +1076,36 @@
     try { state.me = await api.getMyProfile(); cache.set("me", state.me); }
     catch (e) { if (!state.me) toast(friendly(e)); }
     api.touch().catch(() => {});
+    registerDevice(prev !== state.uid).catch(() => {});
+  }
+
+  /* ---------- device (platform, OS, browser, model) for account security and support ---------- */
+  function deviceKey() {
+    try {
+      let k = localStorage.getItem("k-device");
+      if (!k) { k = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/-/g, ""); localStorage.setItem("k-device", k); }
+      return k;
+    } catch { return null; }
+  }
+  async function deviceInfo() {
+    const ua = navigator.userAgent;
+    const m = (re, i = 1) => (ua.match(re) || [])[i];
+    const os = /Android/.test(ua) ? `Android ${m(/Android ([\d]+)/) || ""}`.trim()
+      : /iPhone|iPad|iPod/.test(ua) ? `iOS ${m(/OS (\d+)_/) || ""}`.trim()
+      : /Windows NT/.test(ua) ? "Windows" : /CrOS/.test(ua) ? "ChromeOS" : /Mac OS X/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : "Other";
+    const browser = /Opera Mini|OPiM/.test(ua) ? "Opera Mini" : /OPR\/|Opera/.test(ua) ? "Opera" : /UCBrowser/.test(ua) ? "UC Browser"
+      : /SamsungBrowser/.test(ua) ? "Samsung Internet" : /Edg\//.test(ua) ? "Edge" : /Firefox\/|FxiOS/.test(ua) ? "Firefox"
+      : /CriOS|Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Other";
+    const installed = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+    let model = /Android/.test(ua) ? m(/Android [^;)]*; ([^;)]+?)(?: Build|\))/) : /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : null;
+    if (model === "K" || model === "wv") model = null; // Chrome hides the model in its default user agent
+    try { if (navigator.userAgentData?.getHighEntropyValues) { const h = await navigator.userAgentData.getHighEntropyValues(["model"]); if (h.model) model = h.model; } } catch { /* not allowed */ }
+    return { os, browser: installed ? `${browser} (home screen app)` : browser, model };
+  }
+  async function registerDevice(newSignIn) {
+    if (!state.uid || !api.registerDevice) return;
+    const key = deviceKey(); if (!key) return;
+    await api.registerDevice({ key, platform: "web", ...(await deviceInfo()), app_version: null, new_sign_in: !!newSignIn });
   }
 
   async function boot() {
