@@ -233,6 +233,7 @@ window.KindredDemo = function () {
       return clone(msg);
     },
     async mediaUrl(path) { return path; },
+    forgetMediaUrl() {},
     async markRead(matchId) {
       const me = session?.user?.id;
       let changed = false;

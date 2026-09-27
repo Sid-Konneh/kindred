@@ -696,7 +696,7 @@
       drawMsgs();
       if (msg.sender !== state.uid) api.markRead(id).catch(() => {});
     });
-    cleanup = () => { unsub(); clearTimeout(typingTimer); };
+    cleanup = () => { unsub(); clearTimeout(typingTimer); mediaNodes.clear(); };
     try {
       const list = await api.getMessages(id);
       if (route().name !== "chat" || chatMatch?.id !== id) return;
@@ -738,24 +738,49 @@
     box.innerHTML = html + typing;
     box.scrollTop = box.scrollHeight;
     const ice = $("#ice"); if (ice) ice.hidden = chatMsgs.length > 0;
-    $$(".bubble.media", box).forEach(fillMedia);
+    $$(".bubble.media", box).forEach(el => fillMedia(el));
   }
 
   /* ---------- chat photos & videos ---------- */
   const revealed = new Set();
-  async function fillMedia(el) {
+  // Photo/video boxes by message id. drawMsgs rebuilds the whole list, so we move the existing
+  // box back in instead of re-signing and re-downloading the file on every redraw.
+  const mediaNodes = new Map();
+  async function fillMedia(el, retried) {
     const boxEl = $(".media-box", el); if (!boxEl) return;
+    const id = el.dataset.media, path = el.dataset.path, blurred = el.classList.contains("blurred");
+    const saved = path && mediaNodes.get(id);
+    if (saved && saved.blurred === blurred) { boxEl.replaceWith(saved.node); return; }
+    const fail = () => {
+      mediaNodes.delete(id);
+      boxEl.classList.remove("sk");
+      boxEl.innerHTML = `<button type="button" class="media-retry">Couldn't load<small>Tap to retry</small></button>`;
+      $(".media-retry", boxEl).addEventListener("click", e => { e.stopPropagation(); if (path) api.forgetMediaUrl(path); boxEl.classList.add("sk"); boxEl.innerHTML = ""; fillMedia(boxEl.closest(".bubble.media") || el); });
+    };
+    // A failed load is usually an expired or bad link: get a fresh one once, then offer a retry.
+    const onError = () => {
+      if (!boxEl.isConnected && mediaNodes.get(id)?.node !== boxEl) return;
+      if (!retried && path) { mediaNodes.delete(id); api.forgetMediaUrl(path); fillMedia(boxEl.closest(".bubble.media") || el, true); } else fail();
+    };
     let url = el.dataset.local;
-    try { if (!url && el.dataset.path) url = await api.mediaUrl(el.dataset.path); } catch { boxEl.classList.remove("sk"); boxEl.innerHTML = '<span class="muted" style="padding:14px;display:block;font-size:13px">Couldn\'t load</span>'; return; }
-    if (!url || !el.isConnected) return;
+    try { if (!url && path) url = await api.mediaUrl(path); } catch { if (el.isConnected) fail(); return; }
+    if (!url || !el.isConnected || $(".media-box", el) !== boxEl) return;
     if (el.dataset.kind === "video") {
-      boxEl.innerHTML = `<video src="${esc(url)}" ${el.classList.contains("blurred") ? "" : "controls"} playsinline preload="metadata"></video>`;
-      const v = $("video", boxEl); v.addEventListener("loadedmetadata", () => boxEl.classList.remove("sk"), { once: true }); setTimeout(() => boxEl.classList.remove("sk"), 3000);
+      // #t=0.1 makes iOS Safari paint the first frame as a preview.
+      boxEl.innerHTML = `<video src="${esc(url)}#t=0.1" ${blurred ? "" : "controls"} playsinline preload="metadata"></video>`;
+      const v = $("video", boxEl);
+      v.addEventListener("loadedmetadata", () => boxEl.classList.remove("sk"), { once: true });
+      v.addEventListener("error", onError, { once: true });
+      setTimeout(() => boxEl.classList.remove("sk"), 3000);
     } else {
-      boxEl.innerHTML = `<img src="${esc(url)}" alt="Photo" loading="lazy">`;
-      const i = $("img", boxEl); i.onload = () => boxEl.classList.remove("sk");
-      if (!el.classList.contains("blurred")) i.addEventListener("click", () => openMediaViewer(url));
+      // No loading="lazy": iOS WebKit may never start loading an unsized lazy image inside the scrolling chat.
+      boxEl.innerHTML = `<img src="${esc(url)}" alt="Photo" decoding="async">`;
+      const i = $("img", boxEl);
+      i.addEventListener("load", () => boxEl.classList.remove("sk"), { once: true });
+      i.addEventListener("error", onError, { once: true });
+      if (!blurred) i.addEventListener("click", () => openMediaViewer(url));
     }
+    if (path) mediaNodes.set(id, { node: boxEl, blurred });
   }
   function openMediaViewer(url) {
     overlay(`<div class="viewer" data-act="close-sheet"><img src="${esc(url)}" alt="Photo"><button class="sheet-close" data-act="close-sheet" aria-label="Close">${I.x}</button></div>`);
@@ -1155,7 +1180,7 @@
         const lv = $("#call-local"); if (lv) { lv.srcObject = S.local; lv.classList.toggle("rear", facing === "environment"); }
       } catch { toast("This device has only one camera."); }
     },
-    "reveal-media": b => { revealed.add(b.dataset.id); const el = b.closest(".bubble.media"); el.classList.remove("blurred"); b.remove(); fillMedia(el); },
+    "reveal-media": b => { revealed.add(b.dataset.id); mediaNodes.delete(b.dataset.id); const el = b.closest(".bubble.media"); el.classList.remove("blurred"); b.remove(); fillMedia(el); },
     "use-email": b => { const f = b.closest("form"); f.elements.email.value = b.dataset.email; formError(f, ""); f.elements.email.focus(); },
     signout: async () => { await api.signOut(); },
     step: async b => {

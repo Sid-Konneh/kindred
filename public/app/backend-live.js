@@ -66,14 +66,17 @@ window.KindredLive = function (cfg) {
       must(await sb.storage.from("chat-media").upload(path, blob, { contentType: blob.type || (kind === "image" ? "image/jpeg" : "video/mp4"), upsert: false }));
       return must(await sb.from("messages").insert({ match_id: matchId, sender: uid(), body: "", kind, media_path: path, media_meta: meta || null }).select("*").single());
     },
-    // Short-lived private link to a chat photo/video (cached for most of its lifetime)
-    async mediaUrl(path) {
+    // Short-lived private link to a chat photo/video (cached for most of its lifetime).
+    // The pending request is cached too, so redraws while it's in flight share one request.
+    mediaUrl(path) {
       const hit = mediaCache.get(path);
       if (hit && hit.until > Date.now()) return hit.url;
-      const { signedUrl } = must(await sb.storage.from("chat-media").createSignedUrl(path, 3600));
-      mediaCache.set(path, { url: signedUrl, until: Date.now() + 50 * 60 * 1000 });
-      return signedUrl;
+      const url = sb.storage.from("chat-media").createSignedUrl(path, 3600).then(r => must(r).signedUrl);
+      mediaCache.set(path, { url, until: Date.now() + 50 * 60 * 1000 });
+      url.catch(() => { if (mediaCache.get(path)?.url === url) mediaCache.delete(path); });
+      return url;
     },
+    forgetMediaUrl(path) { mediaCache.delete(path); },
     // Calls: WebRTC offer/answer travel through the calls table (see migration 014)
     async startCall(matchId, video, offer) { return must(await sb.rpc("start_call", { p_match: matchId, p_video: !!video, p_offer: offer })); },
     async updateCall(id, status, answer) { return must(await sb.rpc("update_call", { p_call: id, p_status: status, p_answer: answer || null })); },

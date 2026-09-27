@@ -106,6 +106,7 @@ class _MediaBubbleState extends State<MediaBubble> {
   void _open() {
     if (widget.hidden) return widget.onReveal();
     if (m.kind == 'video') {
+      if (_url == null && m.localFile == null) return; // link still loading
       Navigator.push(context, MaterialPageRoute(builder: (_) => VideoScreen(url: _url, file: m.localFile)));
     } else if (_url != null || m.localBytes != null) {
       Navigator.push(context, PageRouteBuilder(opaque: false, pageBuilder: (_, _, _) => PhotoViewer(url: _url, bytes: m.localBytes, cacheKey: m.mediaPath)));
