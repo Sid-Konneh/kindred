@@ -83,13 +83,14 @@ Play Console → **Policy and programs → App content**. Google only allows the
 | Personal info | Other info (date of birth, gender, town, job, bio, interests, languages) | Required | App functionality |
 | Personal info | Sexual orientation (the "show me women/men/everyone" setting) | Required | App functionality |
 | Personal info | Religious or philosophical beliefs | **Optional** | App functionality |
-| Photos and videos | Photos | Required | App functionality |
+| Photos and videos | Photos (profile photos and photos sent in chat) | Required | App functionality |
+| Photos and videos | Videos (sent in chat) | **Optional** | App functionality |
 | Messages | Other in-app messages | Required | App functionality |
-| App activity | App interactions (likes, passes, matches, blocks, reports) | Required | App functionality |
+| App activity | App interactions (likes, passes, matches, blocks, reports, call history: who called, when, how long) | Required | App functionality |
 | App activity | Other user-generated content (bio) | Required | App functionality |
 | Device or other IDs | Device or other IDs (a random ID the app creates, plus phone model, Android version, app version) | Required | App functionality, Fraud prevention, security and compliance |
 
-Not collected: location, contacts, financial info, health, crash logs, analytics.
+Not collected: location, contacts, financial info, health, crash logs, analytics. **Audio / voice recordings: not collected.** Voice and video calls go directly between the two phones, encrypted end to end by WebRTC; nothing is recorded or passes through our servers, which Google does not count as collection. The app asks for the **microphone and camera** only when a call starts; no extra Play declaration is needed for these permissions.
 
 **Government apps:** No. **Financial features:** None. **Health:** None. **News app:** No.
 

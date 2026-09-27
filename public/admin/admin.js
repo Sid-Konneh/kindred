@@ -272,7 +272,7 @@
         <div class="evidence"><h4>Evidence</h4>
           ${ev.profile?.photos?.length ? `<div class="thumbs" style="margin-bottom:10px">${ev.profile.photos.map(u => `<div class="thumb"><img src="${esc(u)}" alt="" loading="lazy"></div>`).join("")}</div>` : ""}
           ${ev.profile?.bio ? `<p style="margin:0 0 10px;font-size:14px"><b>Bio:</b> ${esc(ev.profile.bio)}</p>` : ""}
-          ${msgs.length ? `<div class="msgs">${msgs.map(m => `<div class="msg ${m.from}"><small>${m.from === "reported" ? esc(rep.name) : "Reporter"} · ${fullDate(m.at)}</small>${esc(m.body)}</div>`).join("")}</div>` : '<p class="muted" style="margin:0;font-size:14px">No messages between them.</p>'}
+          ${msgs.length ? `<div class="msgs">${msgs.map(m => `<div class="msg ${m.from}"><small>${m.from === "reported" ? esc(rep.name) : "Reporter"} · ${fullDate(m.at)}</small>${m.media_path ? `<button class="btn sm ev-media" data-path="${esc(m.media_path)}" data-kind="${esc(m.kind)}">${m.kind === "video" ? "🎥 Video" : "📷 Photo"} · Show</button>` : ""}${esc(m.body)}</div>`).join("")}</div>` : '<p class="muted" style="margin:0;font-size:14px">No messages between them.</p>'}
         </div>
         ${r.resolution_note || r.resolved_by ? `<p class="muted" style="font-size:13px;margin:10px 0 0">${r.resolved_by ? `Closed by ${esc(r.resolved_by)} ${when(r.resolved_at)}` : ""}${r.resolution_note ? ` — “${esc(r.resolution_note)}”` : ""}</p>` : ""}
         <div class="actions">
@@ -283,6 +283,14 @@
         </div></div>`;
     }).join("");
     $$("[data-member]", list).forEach(a => a.onclick = () => openMember(a.dataset.member));
+    // Chat photos/videos are private; admins open them through a short-lived signed link, only when they choose to
+    $$(".ev-media", list).forEach(b => b.onclick = async () => {
+      b.disabled = true;
+      const { data, error } = await sb.storage.from("chat-media").createSignedUrl(b.dataset.path, 600);
+      if (error || !data?.signedUrl) { b.textContent = "File no longer available"; return; }
+      const u = esc(data.signedUrl);
+      b.outerHTML = b.dataset.kind === "video" ? `<video class="ev-file" src="${u}" controls playsinline preload="metadata"></video>` : `<a href="${u}" target="_blank" rel="noopener"><img class="ev-file" src="${u}" alt="Photo sent in chat"></a>`;
+    });
     $$(".report [data-act]", list).forEach(b => b.onclick = async () => {
       const card = b.closest(".report"), id = card.dataset.id, r = rows.find(x => x.id === id), act = b.dataset.act;
       try {
@@ -620,6 +628,7 @@
         const { data: files } = await sb.storage.from("photos").list(id, { limit: 100 });
         if (files?.length) await sb.storage.from("photos").remove(files.map(f => `${id}/${f.name}`));
         await rpc("admin_delete_member", { p_user: id });
+        sb.functions.invoke("chat-media-cleanup", { body: {} }).catch(() => {}); // their chats' photos/videos
         toast(`${m.name} deleted`); closeDrawer(); if (state.tab === "members") loadMembers();
       } catch (e) { toast(friendly(e)); }
     });

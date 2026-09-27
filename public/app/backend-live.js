@@ -9,6 +9,7 @@ window.KindredLive = function (cfg) {
   const home = () => location.origin + location.pathname;
   const must = ({ data, error }) => { if (error) throw error; return data; };
   let uidCache = null;
+  const mediaCache = new Map();
   sb.auth.onAuthStateChange((_e, s) => { uidCache = s?.user?.id || null; });
   const uid = () => uidCache || (() => { throw new Error("Please sign in again."); })();
 
@@ -59,6 +60,37 @@ window.KindredLive = function (cfg) {
     async sendMessage(matchId, body) {
       return must(await sb.from("messages").insert({ match_id: matchId, sender: uid(), body }).select("*").single());
     },
+    // Photo or video: upload to the match's private folder, then post a message pointing at it.
+    async sendMedia(matchId, blob, kind, ext, meta) {
+      const path = `${matchId}/${crypto.randomUUID()}.${ext}`;
+      must(await sb.storage.from("chat-media").upload(path, blob, { contentType: blob.type || (kind === "image" ? "image/jpeg" : "video/mp4"), upsert: false }));
+      return must(await sb.from("messages").insert({ match_id: matchId, sender: uid(), body: "", kind, media_path: path, media_meta: meta || null }).select("*").single());
+    },
+    // Short-lived private link to a chat photo/video (cached for most of its lifetime)
+    async mediaUrl(path) {
+      const hit = mediaCache.get(path);
+      if (hit && hit.until > Date.now()) return hit.url;
+      const { signedUrl } = must(await sb.storage.from("chat-media").createSignedUrl(path, 3600));
+      mediaCache.set(path, { url: signedUrl, until: Date.now() + 50 * 60 * 1000 });
+      return signedUrl;
+    },
+    // Calls: WebRTC offer/answer travel through the calls table (see migration 014)
+    async startCall(matchId, video, offer) { return must(await sb.rpc("start_call", { p_match: matchId, p_video: !!video, p_offer: offer })); },
+    async updateCall(id, status, answer) { return must(await sb.rpc("update_call", { p_call: id, p_status: status, p_answer: answer || null })); },
+    async ringingCalls() { return must(await sb.rpc("my_ringing_calls")) || []; },
+    async getCalls(matchId) {
+      return must(await sb.from("calls").select("id,match_id,caller,callee,video,status,created_at,answered_at,ended_at")
+        .eq("match_id", matchId).order("created_at", { ascending: false }).limit(40)) || [];
+    },
+    onCalls(cb) {
+      const me = uid(), h = p => cb(p.new);
+      const ch = sb.channel("calls:" + me)
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "calls", filter: `callee=eq.${me}` }, h)
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "calls", filter: `callee=eq.${me}` }, h)
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "calls", filter: `caller=eq.${me}` }, h)
+        .subscribe();
+      return () => sb.removeChannel(ch);
+    },
     async markRead(matchId) { await sb.rpc("mark_read", { p_match: matchId }); },
     subscribe(matchId, cb) {
       const ch = sb.channel("chat:" + matchId)
@@ -67,7 +99,7 @@ window.KindredLive = function (cfg) {
         .subscribe();
       return () => sb.removeChannel(ch);
     },
-    async unmatch(matchId) { must(await sb.rpc("unmatch", { p_match: matchId })); },
+    async unmatch(matchId) { must(await sb.rpc("unmatch", { p_match: matchId })); cleanupMedia(); },
     async block(userId) { must(await sb.from("blocks").insert({ blocker: uid(), blocked: userId })); },
     async report(userId, reason, details) {
       must(await sb.from("reports").insert({ reporter: uid(), reported: userId, reason, details: details || null }));
@@ -77,10 +109,16 @@ window.KindredLive = function (cfg) {
       const me = uid();
       const files = must(await sb.storage.from("photos").list(me, { limit: 100 })) || [];
       if (files.length) must(await sb.storage.from("photos").remove(files.map(f => `${me}/${f.name}`)));
+      const sent = must(await sb.from("messages").select("media_path").eq("sender", me).not("media_path", "is", null).limit(1000)) || [];
+      if (sent.length) await sb.storage.from("chat-media").remove(sent.map(x => x.media_path)).catch(() => {});
       must(await sb.rpc("delete_my_account"));
+      await cleanupMedia();
       await sb.auth.signOut();
     },
   };
+
+  // Chat files of removed matches are deleted by an edge function (storage can't be cleared from SQL)
+  function cleanupMedia() { return sb.functions.invoke("chat-media-cleanup", { body: {} }).catch(() => {}); }
 
   function ageFrom(bd) {
     const b = new Date(bd + "T00:00:00"), n = new Date();

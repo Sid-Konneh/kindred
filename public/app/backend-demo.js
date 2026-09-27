@@ -223,6 +223,16 @@ window.KindredDemo = function () {
       setTimeout(() => { msg.read_at = nowIso(); const s = db.messages.find(x => x.id === msg.id); if (s) { s.read_at = msg.read_at; save(); emit(matchId, { type: "read" }); } }, 2200);
       return clone(msg);
     },
+    async sendMedia(matchId, blob, kind, ext, meta) {
+      await wait(400);
+      const me = uid();
+      const m = db.matches.find(x => x.id === matchId) || fail("This match is no longer available.");
+      const url = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(blob); });
+      const msg = { id: newId(), match_id: matchId, sender: me, body: "", kind, media_path: url, media_meta: meta || null, created_at: nowIso(), read_at: null };
+      db.messages.push(msg); m.last_message_at = msg.created_at; save();
+      return clone(msg);
+    },
+    async mediaUrl(path) { return path; },
     async markRead(matchId) {
       const me = session?.user?.id;
       let changed = false;

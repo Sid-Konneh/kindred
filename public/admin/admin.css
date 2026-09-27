@@ -176,3 +176,5 @@ dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18
 
 /* grid children must be allowed to shrink, so wide content (the heatmap) scrolls inside its card */
 .grid2 > *, .grid3 > *, .tiles > * { min-width: 0; }
+.ev-file { display: block; max-width: 220px; max-height: 260px; border-radius: 10px; margin: 4px 0; background: #000; }
+.ev-media { margin: 4px 0; }

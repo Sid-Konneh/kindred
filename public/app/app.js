@@ -46,6 +46,14 @@
     globe: svg('<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 0 20M12 2a15.3 15.3 0 0 0 0 20"/>'),
     unlink: svg('<path d="M18.84 12.25l1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71M5.17 11.75l-1.71 1.71a5 5 0 0 0 7.07 7.07l1.71-1.71M8 2v3M2 8h3M16 22v-3M22 16h-3"/>'),
     phone: svg('<rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/>'),
+    image: svg('<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>'),
+    call: svg('<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>'),
+    phoneOff: svg('<g transform="rotate(135 12 12)"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></g>'),
+    video: svg('<path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/>'),
+    videoOff: svg('<path d="M10.66 6H14a2 2 0 0 1 2 2v2.34l1 1L22 8v8M16 16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2l10 10ZM2 2l20 20"/>'),
+    mic: svg('<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/>'),
+    micOff: svg('<path d="M2 2l20 20M18.89 13.23A7 7 0 0 0 19 12v-2M5 10v2a7 7 0 0 0 12 5M15 9.34V5a3 3 0 0 0-5.68-1.33M9 9v3a3 3 0 0 0 5.12 2.12M12 19v3"/>'),
+    flip: svg('<path d="M11 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5M13 5h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5"/><circle cx="12" cy="12" r="3"/><path d="m18 22-3-3 3-3M6 2l3 3-3 3"/>'),
     mark: svg('<path d="M10.3 6.6C8.6 4.9 5.9 5.2 4.3 7.7 2.4 11.1 4.8 15.4 12 20.2"/><path d="M13.7 6.6C15.4 4.9 18.1 5.2 19.7 7.7c1.9 3.4-.5 7.7-7.7 12.5"/><circle cx="12" cy="3.6" r="1.2" fill="currentColor" stroke="none"/>'),
   };
   const MARK = (size = 40) => `<svg width="${size}" height="${size}" viewBox="0 0 100 100" fill="none" stroke="url(#kg)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><defs><linearGradient id="kg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F2436B"/><stop offset="1" stop-color="#FF8A3D"/></linearGradient></defs><path d="M43 27.5C36 20.5 24.5 21.5 18 32c-8 14 2 32 32 52"/><path d="M57 27.5C64 20.5 75.5 21.5 82 32c8 14-2 32-32 52" stroke-opacity=".82"/><circle cx="50" cy="16" r="5" fill="#F2436B" stroke="none"/></svg>`;
@@ -669,13 +677,14 @@
     mount(`<div class="screen">${offlineBar()}
       <header class="top chat-top"><a class="icon-btn" href="#/matches" aria-label="Back">${I.back}</a>
         <button class="who" data-act="chat-profile">${avatar(o, 42)}<span><b>${esc(o.name)}</b><small>${esc(seenText(o.last_active) || o.city || "")}</small></span></button>
+        ${canCall() ? `<button class="icon-btn" data-act="call-voice" aria-label="Voice call" title="Voice call">${I.call}</button><button class="icon-btn" data-act="call-video" aria-label="Video call" title="Video call">${I.video}</button>` : ""}
         <button class="icon-btn" data-act="chat-menu" aria-label="More options">${I.more}</button></header>
       <div class="msgs" id="msgs"></div>
       <div class="ice" id="ice" hidden>${ICEBREAKERS.map(t => `<button data-act="ice">${esc(t)}</button>`).join("")}</div>
-      <form class="composer" data-form="send"><textarea name="body" rows="1" maxlength="2000" placeholder="Message ${esc(o.name)}…" aria-label="Message"></textarea>
+      <form class="composer" data-form="send"><label class="attach" aria-label="Send a photo or video" title="Send a photo or video">${I.image}<input type="file" accept="image/*,video/*" data-chatmedia hidden></label><textarea name="body" rows="1" maxlength="2000" placeholder="Message ${esc(o.name)}…" aria-label="Message"></textarea>
         <button class="send" type="submit" aria-label="Send" disabled>${I.send}</button></form>
     </div>`);
-    chatMsgs = cache.get("msgs:" + id) || [];
+    chatMsgs = cache.get("msgs:" + id) || []; chatCalls = [];
     if (chatMsgs.length) drawMsgs(); else $("#msgs").innerHTML = Array.from({ length: 5 }, (_, i) => `<div class="sk" style="height:40px;width:${[55, 40, 65, 35, 50][i]}%;border-radius:20px;margin:6px 0;align-self:${i % 2 ? "flex-end" : "flex-start"}"></div>`).join("");
     let typingTimer;
     const unsub = api.subscribe(id, evt => {
@@ -691,7 +700,7 @@
     try {
       const list = await api.getMessages(id);
       if (route().name !== "chat" || chatMatch?.id !== id) return;
-      mergeMsgs(list); drawMsgs();
+      mergeMsgs(list); drawMsgs(); loadCallLog();
       api.markRead(id).then(() => { m.unread = 0; }).catch(() => {});
     } catch (e) { toast(friendly(e)); if (!chatMsgs.length) drawMsgs(); }
   };
@@ -708,16 +717,81 @@
       <div class="safety-note">${I.shield}<span><b style="color:var(--text)">Stay safe.</b> Keep chats on Kindred until you trust someone. Never send money or Orange Money / Afrimoney to someone you haven't met.</span></div></div>`;
     let lastDay = "";
     const lastMine = [...chatMsgs].reverse().find(x => x.sender === state.uid);
-    chatMsgs.forEach(msg => {
+    const timeline = chatCalls.length ? chatMsgs.concat(chatCalls.map(c => ({ ...c, _call: true }))).sort((a, b) => new Date(a.created_at) - new Date(b.created_at)) : chatMsgs;
+    timeline.forEach(msg => {
       const day = new Date(msg.created_at).toDateString();
       if (day !== lastDay) { html += `<div class="day">${esc(fmtDay(msg.created_at))}</div>`; lastDay = day; }
+      if (msg._call) { html += callLogRow(msg); return; }
       const mine = msg.sender === state.uid;
-      html += `<div class="bubble ${mine ? "me" : "them"} ${msg._temp ? "pending" : ""} ${msg._failed ? "failed" : ""}">${esc(msg.body)}</div>`;
+      if (msg.kind === "image" || msg.kind === "video") {
+        // Received media starts blurred until tapped, so nobody is shown an unwanted photo.
+        const hidden = !mine && !revealed.has(msg.id);
+        html += `<div class="bubble media ${mine ? "me" : "them"} ${msg._temp ? "pending" : ""} ${msg._failed ? "failed" : ""} ${hidden ? "blurred" : ""}" data-media="${esc(msg.id)}" data-kind="${msg.kind}" data-path="${esc(msg._local ? "" : msg.media_path || "")}" ${msg._local ? `data-local="${esc(msg._local)}"` : ""}>
+          <div class="media-box sk"></div>
+          ${hidden ? `<button class="reveal" data-act="reveal-media" data-id="${esc(msg.id)}">${msg.kind === "video" ? "🎥 Video" : "📷 Photo"}<small>Tap to view</small></button>` : ""}
+          ${msg.body ? `<div class="caption">${esc(msg.body)}</div>` : ""}</div>`;
+      } else {
+        html += `<div class="bubble ${mine ? "me" : "them"} ${msg._temp ? "pending" : ""} ${msg._failed ? "failed" : ""}">${esc(msg.body)}</div>`;
+      }
       if (msg === lastMine) html += `<div class="msg-meta me">${msg._failed ? "Not sent · tap send to retry" : msg._temp ? "Sending…" : msg.read_at ? "Seen" : "Sent " + fmtWhen(msg.created_at)}</div>`;
     });
     box.innerHTML = html + typing;
     box.scrollTop = box.scrollHeight;
     const ice = $("#ice"); if (ice) ice.hidden = chatMsgs.length > 0;
+    $$(".bubble.media", box).forEach(fillMedia);
+  }
+
+  /* ---------- chat photos & videos ---------- */
+  const revealed = new Set();
+  async function fillMedia(el) {
+    const boxEl = $(".media-box", el); if (!boxEl) return;
+    let url = el.dataset.local;
+    try { if (!url && el.dataset.path) url = await api.mediaUrl(el.dataset.path); } catch { boxEl.classList.remove("sk"); boxEl.innerHTML = '<span class="muted" style="padding:14px;display:block;font-size:13px">Couldn\'t load</span>'; return; }
+    if (!url || !el.isConnected) return;
+    if (el.dataset.kind === "video") {
+      boxEl.innerHTML = `<video src="${esc(url)}" ${el.classList.contains("blurred") ? "" : "controls"} playsinline preload="metadata"></video>`;
+      const v = $("video", boxEl); v.addEventListener("loadedmetadata", () => boxEl.classList.remove("sk"), { once: true }); setTimeout(() => boxEl.classList.remove("sk"), 3000);
+    } else {
+      boxEl.innerHTML = `<img src="${esc(url)}" alt="Photo" loading="lazy">`;
+      const i = $("img", boxEl); i.onload = () => boxEl.classList.remove("sk");
+      if (!el.classList.contains("blurred")) i.addEventListener("click", () => openMediaViewer(url));
+    }
+  }
+  function openMediaViewer(url) {
+    overlay(`<div class="viewer" data-act="close-sheet"><img src="${esc(url)}" alt="Photo"><button class="sheet-close" data-act="close-sheet" aria-label="Close">${I.x}</button></div>`);
+  }
+  const videoDuration = file => new Promise(res => {
+    const v = document.createElement("video"); v.preload = "metadata";
+    v.onloadedmetadata = () => { URL.revokeObjectURL(v.src); res(v.duration); };
+    v.onerror = () => res(null);
+    v.src = URL.createObjectURL(file);
+  });
+  async function sendMediaFile(file) {
+    if (!file || !chatMatch) return;
+    const isVideo = file.type.startsWith("video/"), isImage = file.type.startsWith("image/");
+    if (!isVideo && !isImage) return toast("Please choose a photo or a video.");
+    let blob = file, ext, meta = {};
+    try {
+      if (isImage) { blob = await compress(file, 1600, .8); ext = "jpg"; }
+      else {
+        if (file.size > 15 * 1024 * 1024) return toast("That video is too big. Please send one under 15 MB (about a minute).");
+        const d = await videoDuration(file);
+        if (d && d > 65) return toast("Please send a video of 1 minute or less.");
+        meta.duration = d ? Math.round(d) : null;
+        ext = (file.name.split(".").pop() || "mp4").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5) || "mp4";
+      }
+    } catch (e) { return toast(friendly(e)); }
+    const local = URL.createObjectURL(blob);
+    const temp = { id: "t-" + Date.now(), _temp: true, _local: local, sender: state.uid, body: "", kind: isVideo ? "video" : "image", created_at: new Date().toISOString(), match_id: chatMatch.id };
+    chatMsgs.push(temp); drawMsgs();
+    try {
+      const saved = await api.sendMedia(chatMatch.id, blob, temp.kind, ext, meta);
+      chatMsgs = chatMsgs.filter(x => x !== temp);
+      if (!chatMsgs.some(x => x.id === saved.id)) chatMsgs.push(saved);
+      chatMatch.last_message_at = saved.created_at; chatMatch.last_body = isVideo ? "🎥 Video" : "📷 Photo"; chatMatch.last_sender = state.uid;
+      cache.set("msgs:" + chatMatch.id, chatMsgs.filter(x => !x._temp).slice(-80));
+    } catch (e) { temp._failed = true; temp._temp = false; toast(friendly(e)); }
+    drawMsgs();
   }
   async function sendMsg(body) {
     body = body.trim(); if (!body || !chatMatch) return;
@@ -731,6 +805,206 @@
       cache.set("msgs:" + chatMatch.id, chatMsgs.filter(x => !x._temp).slice(-80));
     } catch (e) { temp._failed = true; temp._temp = false; toast(friendly(e)); }
     drawMsgs();
+  }
+
+  /* ---------- voice & video calls ----------
+     Peer-to-peer WebRTC. The caller's offer and the callee's answer (with their network candidates already
+     gathered) travel through the calls table over Realtime, which is also the call history shown in chat.
+     Only a public STUN server is used, so a few strict mobile networks may not connect without a TURN relay. */
+  const ICE_SERVERS = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun.cloudflare.com:3478"] }];
+  const CALL_END = ["declined", "busy", "missed", "cancelled", "ended", "failed"];
+  let cur = null, callsUnsub = null, ringer = null, chatCalls = [], logTimer;
+  const callEl = document.createElement("div"); callEl.id = "call"; callEl.hidden = true; document.body.appendChild(callEl);
+  const canCall = () => LIVE && !!api.startCall && !!window.RTCPeerConnection && !!navigator.mediaDevices?.getUserMedia;
+  const fmtDur = ms => { const t = Math.max(0, Math.round(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = String(t % 60).padStart(2, "0"); return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`; };
+
+  function watchCalls() {
+    if (callsUnsub) { try { callsUnsub(); } catch { /* ignore */ } callsUnsub = null; }
+    if (!state.uid || !LIVE || !api.onCalls) { teardown(); return; }
+    callsUnsub = api.onCalls(onCallRow);
+    api.ringingCalls().then(list => list.forEach(onCallRow)).catch(() => {});
+  }
+  function onCallRow(c) {
+    if (!c?.id) return;
+    if (chatMatch?.id === c.match_id && route().name === "chat") { clearTimeout(logTimer); logTimer = setTimeout(loadCallLog, 400); }
+    if (c.callee === state.uid && c.status === "ringing" && cur?.c?.id !== c.id) {
+      if (cur) { api.updateCall(c.id, "busy").catch(() => {}); return; }
+      return incoming(c);
+    }
+    const S = cur; if (!S || S.c?.id !== c.id) return;
+    S.c = { ...S.c, ...c };
+    if (c.status === "accepted" && S.role === "caller" && c.answer && !S.answered) {
+      S.answered = true; stopRinger(); clearTimeout(S.ringTimer); callStatus("Connecting…");
+      S.pc.setRemoteDescription({ type: "answer", sdp: c.answer }).catch(() => hangup("failed", "Couldn't connect the call."));
+    } else if (CALL_END.includes(c.status)) {
+      const n = S.other.name;
+      teardown({ declined: `${n} declined the call`, busy: `${n} is on another call`, missed: S.role === "callee" ? `Missed call from ${n}` : `${n} didn't answer`,
+        cancelled: S.role === "callee" ? `Missed call from ${n}` : "", ended: S.started ? `Call ended · ${fmtDur(Date.now() - S.started)}` : "Call ended", failed: "The call dropped" }[c.status]);
+    }
+  }
+
+  function drawCall(S, status, ringingIn) {
+    const o = S.other;
+    callEl.hidden = false;
+    callEl.className = (S.video ? "video" : "voice") + (callEl.classList.contains("show") ? " show" : "");
+    callEl.innerHTML = `<video id="call-remote" autoplay playsinline></video>
+      <div class="call-who">${avatar(o, 112)}<div><h2>${esc(o.name)}</h2><p id="call-status">${esc(status)}</p></div></div>
+      ${S.video && S.local ? `<video id="call-local" autoplay playsinline muted></video>` : ""}
+      <div class="call-bar ${ringingIn ? "ringing" : ""}">${ringingIn ? `
+        <button class="cbtn end" data-act="call-decline" aria-label="Decline">${I.phoneOff}<small>Decline</small></button>
+        <button class="cbtn ok" data-act="call-accept" aria-label="Accept">${S.video ? I.video : I.call}<small>Accept</small></button>` : `
+        <button class="cbtn" data-act="call-mute" aria-label="Mute" aria-pressed="false">${I.mic}</button>
+        ${S.video ? `<button class="cbtn" data-act="call-cam" aria-label="Turn camera off" aria-pressed="false">${I.video}</button>
+        <button class="cbtn" data-act="call-flip" aria-label="Switch camera">${I.flip}</button>` : ""}
+        <button class="cbtn end" data-act="call-end" aria-label="End call">${I.phoneOff}</button>`}</div>`;
+    if (S.local) $("#call-local").srcObject = S.local;
+    requestAnimationFrame(() => callEl.classList.add("show"));
+  }
+  function callStatus(t) { const el = $("#call-status"); if (el) el.textContent = t; }
+  function newCall(fields) { cur = { pc: null, local: null, c: null, answered: false, started: 0, muted: false, camOff: false, facing: "user", ...fields }; return cur; }
+
+  async function getMedia(S) {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: S.video ? { facingMode: S.facing, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } } : false,
+    });
+    if (cur !== S) { stream.getTracks().forEach(t => t.stop()); throw new Error("__gone"); }
+    S.local = stream;
+    if (S.video && !$("#call-local")) $(".call-bar", callEl)?.insertAdjacentHTML("beforebegin", `<video id="call-local" autoplay playsinline muted></video>`);
+    const lv = $("#call-local"); if (lv) lv.srcObject = stream;
+  }
+  function makePc(S) {
+    const pc = S.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    S.local.getTracks().forEach(t => pc.addTrack(t, S.local));
+    pc.ontrack = e => { const rv = $("#call-remote"); if (rv && e.streams[0] && rv.srcObject !== e.streams[0]) rv.srcObject = e.streams[0]; };
+    pc.onconnectionstatechange = () => {
+      if (cur !== S) return;
+      const st = pc.connectionState;
+      if (st === "connected") {
+        clearTimeout(S.dropTimer);
+        if (!S.started) { S.started = Date.now(); S.tick = setInterval(() => callStatus(fmtDur(Date.now() - S.started)), 1000); }
+        callEl.classList.add("live"); callStatus(fmtDur(Date.now() - S.started));
+      } else if (st === "disconnected") {
+        callStatus("Reconnecting…"); clearTimeout(S.dropTimer);
+        S.dropTimer = setTimeout(() => cur === S && pc.connectionState !== "connected" && hangup("failed", "The call dropped. The connection was lost."), 12000);
+      } else if (st === "failed") {
+        hangup("failed", S.started ? "The call dropped. The connection was lost." : "Couldn't connect. One of you may be on a network that blocks calls. Try Wi-Fi.");
+      }
+    };
+    return pc;
+  }
+  // Send the offer/answer once network candidates are gathered (no trickle ICE needed)
+  const iceDone = pc => new Promise(res => {
+    if (pc.iceGatheringState === "complete") return res();
+    const t = setTimeout(res, 2500);
+    pc.addEventListener("icegatheringstatechange", () => { if (pc.iceGatheringState === "complete") { clearTimeout(t); res(); } });
+  });
+  function mediaError(e) {
+    if (e?.message === "__gone") return "";
+    const n = e?.name || "";
+    if (n === "NotAllowedError" || n === "SecurityError") return "Kindred needs your microphone" + (cur?.video ? " and camera" : "") + " for calls. Allow access in your browser settings and try again.";
+    if (n === "NotFoundError" || n === "OverconstrainedError") return "No microphone" + (cur?.video ? " or camera" : "") + " was found on this device.";
+    if (n === "NotReadableError") return "Your microphone or camera is being used by another app.";
+    return friendly(e);
+  }
+
+  async function startCall(video) {
+    if (!chatMatch) return;
+    if (!canCall()) return toast(LIVE ? "Calls aren't supported in this browser. Try Chrome or the Kindred app." : "Calls work in the live app.");
+    if (cur) return toast("You're already on a call.");
+    if (!navigator.onLine) return toast("You're offline.");
+    const S = newCall({ role: "caller", other: chatMatch.other, video, matchId: chatMatch.id });
+    drawCall(S, "Calling…");
+    try {
+      await getMedia(S);
+      const pc = makePc(S);
+      await pc.setLocalDescription(await pc.createOffer());
+      await iceDone(pc);
+      if (cur !== S) return;
+      S.c = await api.startCall(S.matchId, video, pc.localDescription.sdp);
+      if (cur !== S) { api.updateCall(S.c.id, "cancelled").catch(() => {}); return; }
+      callStatus("Ringing…"); startRinger("out");
+      S.ringTimer = setTimeout(() => cur === S && !S.answered && hangup("missed", `${S.other.name} didn't answer`), 45000);
+    } catch (e) { if (cur === S) teardown(mediaError(e)); }
+  }
+  async function incoming(c) {
+    const S = newCall({ role: "callee", c, other: { id: c.caller, name: "Your match" }, video: c.video, matchId: c.match_id });
+    let m = (state.matches || cache.get("matches") || []).find(x => x.id === c.match_id);
+    if (!m) { await refreshMatches().catch(() => {}); m = (state.matches || []).find(x => x.id === c.match_id); }
+    if (cur !== S) return;
+    if (m) S.other = m.other;
+    drawCall(S, c.video ? "Kindred video call…" : "Kindred voice call…", true);
+    startRinger("in");
+    try { navigator.vibrate?.([500, 300, 500, 300, 500]); } catch { /* ignore */ }
+    S.ringTimer = setTimeout(() => cur === S && !S.answered && !S.accepting && teardown(`Missed call from ${S.other.name}`), 45000);
+  }
+  async function acceptCall() {
+    const S = cur; if (!S || S.role !== "callee" || S.accepting) return;
+    S.accepting = true; stopRinger(); clearTimeout(S.ringTimer);
+    drawCall(S, "Connecting…");
+    try {
+      await getMedia(S);
+      const pc = makePc(S);
+      await pc.setRemoteDescription({ type: "offer", sdp: S.c.offer });
+      await pc.setLocalDescription(await pc.createAnswer());
+      await iceDone(pc);
+      if (cur !== S) return;
+      const row = await api.updateCall(S.c.id, "accepted", pc.localDescription.sdp);
+      if (cur !== S) return;
+      if (row?.status === "accepted") S.answered = true;
+      else teardown(`Missed call from ${S.other.name}`);
+    } catch (e) { if (cur === S) { api.updateCall(S.c.id, "failed").catch(() => {}); teardown(mediaError(e)); } }
+  }
+  function hangup(status, msg) {
+    const S = cur; if (!S) return;
+    const st = status || (S.answered ? "ended" : S.role === "caller" ? "cancelled" : "declined");
+    if (S.c) api.updateCall(S.c.id, st).catch(() => {});
+    teardown(msg ?? (S.started ? `Call ended · ${fmtDur(Date.now() - S.started)}` : ""));
+  }
+  function teardown(msg) {
+    const S = cur; if (!S) return;
+    cur = null;
+    stopRinger(); clearTimeout(S.ringTimer); clearTimeout(S.dropTimer); clearInterval(S.tick);
+    try { S.pc?.close(); } catch { /* ignore */ }
+    S.local?.getTracks().forEach(t => t.stop());
+    callEl.classList.remove("show", "live");
+    setTimeout(() => { if (!cur) { callEl.hidden = true; callEl.innerHTML = ""; } }, 250);
+    if (msg) toast(msg);
+    if (chatMatch?.id === S.matchId && route().name === "chat") loadCallLog();
+  }
+
+  function startRinger(kind) {
+    stopRinger();
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)(), vol = kind === "in" ? .16 : .07;
+      const tone = (f, at, len) => {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.frequency.value = f;
+        g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(vol, at + .03);
+        g.gain.setValueAtTime(vol, at + len - .05); g.gain.linearRampToValueAtTime(0, at + len);
+        o.connect(g).connect(ctx.destination); o.start(at); o.stop(at + len);
+      };
+      const play = () => { const t = ctx.currentTime + .05; if (kind === "in") [[880, 0], [660, .45], [880, 1.1], [660, 1.55]].forEach(([f, d]) => tone(f, t + d, .35)); else tone(425, t, 1.2); };
+      play();
+      ringer = { ctx, iv: setInterval(play, kind === "in" ? 3200 : 4000) };
+    } catch { ringer = null; }
+  }
+  function stopRinger() { if (!ringer) return; clearInterval(ringer.iv); ringer.ctx.close().catch(() => {}); ringer = null; }
+
+  async function loadCallLog() {
+    if (!chatMatch || !LIVE || !api.getCalls) return;
+    const id = chatMatch.id;
+    try { const list = await api.getCalls(id); if (chatMatch?.id !== id || route().name !== "chat") return; chatCalls = list.filter(c => c.status !== "ringing" || cur?.c?.id === c.id); drawMsgs(); } catch { /* history is optional */ }
+  }
+  function callLogRow(c) {
+    const mine = c.caller === state.uid, kind = c.video ? "video" : "voice", Kind = c.video ? "Video" : "Voice";
+    const time = new Date(c.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    let text, missed = false;
+    if (c.answered_at) text = `${Kind} call${c.ended_at ? " · " + fmtDur(new Date(c.ended_at) - new Date(c.answered_at)) : ""}`;
+    else if (mine) text = `${Kind} call · ${{ declined: "Declined", busy: "Busy", missed: "No answer", cancelled: "Cancelled", failed: "Couldn't connect", ringing: "Ringing…" }[c.status] || ""}`;
+    else if (c.status === "declined") text = `You declined a ${kind} call`;
+    else { text = `Missed ${kind} call`; missed = true; }
+    return `<div class="call-log ${missed ? "missed" : ""}">${c.video ? I.video : I.call}<span>${esc(text)}</span><time>${esc(time)}</time>${missed && canCall() ? `<button class="linkbtn" data-act="${c.video ? "call-video" : "call-voice"}">Call back</button>` : ""}</div>`;
   }
 
   /* ---------- profile ---------- */
@@ -853,6 +1127,35 @@
       const t = setInterval(() => { b.textContent = `Resend in ${--n}s`; if (n <= 0) { clearInterval(t); delete b.dataset.cool; b.disabled = false; b.textContent = "Resend email"; } }, 1000);
     },
     "demo-reset": () => go("reset"),
+    "call-voice": () => startCall(false),
+    "call-video": () => startCall(true),
+    "call-accept": () => acceptCall(),
+    "call-decline": () => hangup(),
+    "call-end": () => hangup(),
+    "call-mute": b => {
+      const S = cur; if (!S?.local) return;
+      S.muted = !S.muted; S.local.getAudioTracks().forEach(t => { t.enabled = !S.muted; });
+      b.classList.toggle("on", S.muted); b.setAttribute("aria-pressed", S.muted); b.setAttribute("aria-label", S.muted ? "Unmute" : "Mute"); b.innerHTML = S.muted ? I.micOff : I.mic;
+    },
+    "call-cam": b => {
+      const S = cur; if (!S?.local) return;
+      S.camOff = !S.camOff; S.local.getVideoTracks().forEach(t => { t.enabled = !S.camOff; });
+      b.classList.toggle("on", S.camOff); b.setAttribute("aria-pressed", S.camOff); b.setAttribute("aria-label", S.camOff ? "Turn camera on" : "Turn camera off"); b.innerHTML = S.camOff ? I.videoOff : I.video;
+      $("#call-local")?.classList.toggle("off", S.camOff);
+    },
+    "call-flip": async () => {
+      const S = cur; if (!S?.local || !S.pc) return;
+      const facing = S.facing === "user" ? "environment" : "user";
+      try {
+        const nt = (await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: facing }, width: { ideal: 640 }, height: { ideal: 480 } } })).getVideoTracks()[0];
+        if (cur !== S) { nt.stop(); return; }
+        await S.pc.getSenders().find(x => x.track?.kind === "video")?.replaceTrack(nt);
+        S.local.getVideoTracks().forEach(t => { t.stop(); S.local.removeTrack(t); });
+        S.local.addTrack(nt); nt.enabled = !S.camOff; S.facing = facing;
+        const lv = $("#call-local"); if (lv) { lv.srcObject = S.local; lv.classList.toggle("rear", facing === "environment"); }
+      } catch { toast("This device has only one camera."); }
+    },
+    "reveal-media": b => { revealed.add(b.dataset.id); const el = b.closest(".bubble.media"); el.classList.remove("blurred"); b.remove(); fillMedia(el); },
     "use-email": b => { const f = b.closest("form"); f.elements.email.value = b.dataset.email; formError(f, ""); f.elements.email.focus(); },
     signout: async () => { await api.signOut(); },
     step: async b => {
@@ -1062,7 +1365,7 @@
     if (t.matches("[data-age]")) { const f = t.form; const lo = +f.age_min.value, hi = +f.age_max.value; $("#agev").textContent = `${Math.min(lo, hi)} – ${Math.max(lo, hi)}${Math.max(lo, hi) >= 70 ? "+" : ""}`; }
     if (t.name === "body" && t.closest(".composer")) { t.style.height = "auto"; t.style.height = Math.min(120, t.scrollHeight) + "px"; $(".send").disabled = !t.value.trim(); }
   });
-  document.addEventListener("change", e => { if (e.target.matches("[data-photo]")) addPhoto(e.target); if (e.target.matches("[data-draft]")) state.draft[e.target.dataset.draft] = e.target.value; });
+  document.addEventListener("change", e => { if (e.target.matches("[data-chatmedia]")) { const f = e.target.files?.[0]; e.target.value = ""; sendMediaFile(f); } if (e.target.matches("[data-photo]")) addPhoto(e.target); if (e.target.matches("[data-draft]")) state.draft[e.target.dataset.draft] = e.target.value; });
   document.addEventListener("keydown", e => {
     if (e.key === "Escape" && sheetEl.classList.contains("open")) closeSheet();
     if (e.key === "Enter" && !e.shiftKey && e.target.name === "body" && e.target.closest(".composer") && matchMedia("(pointer:fine)").matches) { e.preventDefault(); e.target.form.requestSubmit(); }
@@ -1074,6 +1377,7 @@
     $$('[data-key="f_show"]', sheetEl).forEach(x => { x.classList.toggle("on", x === b); x.setAttribute("aria-checked", x === b); });
     sheetEl.querySelector('input[name="show_me"]').value = b.dataset.val;
   }, true);
+  window.addEventListener("pagehide", () => { if (cur) hangup(); });
   window.addEventListener("online", () => { toast("Back online"); render(); });
   window.addEventListener("offline", () => { toast("You're offline"); render(); });
 
@@ -1084,6 +1388,7 @@
     state.uid = session?.user?.id || null;
     if (!session) {
       Object.assign(state, { me: null, feed: [], feedLoaded: false, matches: null, draft: null, step: 0, recovery: false });
+      watchCalls();
       return;
     }
     if (prev !== state.uid) Object.assign(state, { me: null, feed: [], feedLoaded: false, matches: null, draft: null, step: 0 });
@@ -1092,6 +1397,7 @@
     catch (e) { if (!state.me) toast(friendly(e)); }
     api.touch().catch(() => {});
     registerDevice(prev !== state.uid).catch(() => {});
+    if (prev !== state.uid || !callsUnsub) watchCalls();
   }
 
   /* ---------- device (platform, OS, browser, model) for account security and support ---------- */
