@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import '../calls.dart';
+import 'chat_media.dart';
 import 'sheets.dart';
 
 const _icebreakers = ["What's your favourite spot in Salone?", 'Jollof or cassava leaves? 😄', 'What does a perfect weekend look like for you?', 'What are you looking for on Kindred?'];
@@ -181,6 +185,9 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   List<Message>? _msgs;
+  List<CallRecord> _calls = [];
+  final _revealed = <String>{};
+  Timer? _logTimer;
   final _input = TextEditingController();
   final _scroll = ScrollController();
   VoidCallback? _unsub;
@@ -193,12 +200,61 @@ class _ChatScreenState extends State<ChatScreen> {
     if (cached is List) _msgs = cached.map((j) => Message.fromJson(Map<String, dynamic>.from(j))).toList();
     _unsub = Api.subscribe(m.id, _onInsert, _reload);
     _reload();
+    _loadCalls();
+    Calls.log.addListener(_callsChanged);
     _input.addListener(() => setState(() {}));
+  }
+
+  void _callsChanged() {
+    _logTimer?.cancel();
+    _logTimer = Timer(const Duration(milliseconds: 400), _loadCalls);
+  }
+
+  Future<void> _loadCalls() async {
+    try {
+      final list = await Api.callLog(m.id);
+      if (mounted) setState(() => _calls = list.where((c) => c.status != 'ringing' || Calls.cur?.rec?.id == c.id).toList());
+    } catch (_) {/* history is optional */}
+  }
+
+  Future<void> _attach() async {
+    PickedMedia? pm;
+    try {
+      pm = await pickChatMedia(context);
+    } catch (e) {
+      if (mounted) toast(context, friendly(e));
+    }
+    if (pm == null || !mounted) return;
+    final temp = Message(id: 'tmp-${DateTime.now().microsecondsSinceEpoch}', matchId: m.id, sender: Api.uid!, body: '', kind: pm.kind, createdAt: DateTime.now(), pending: true, localBytes: pm.kind == 'image' ? pm.bytes : null, localFile: pm.file);
+    setState(() => _msgs = [...?_msgs, temp]);
+    _toBottom();
+    try {
+      final saved = await Api.sendMedia(m.id, pm.bytes, pm.kind, pm.ext, pm.contentType, duration: pm.duration);
+      if (!mounted) return;
+      setState(() {
+        _msgs!.remove(temp);
+        if (!_msgs!.any((x) => x.id == saved.id)) _msgs!.add(saved);
+      });
+      m
+        ..lastMessageAt = saved.createdAt
+        ..lastBody = pm.kind == 'video' ? '🎥 Video' : '📷 Photo'
+        ..lastSender = saved.sender;
+      app.touch();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        temp.pending = false;
+        temp.failed = true;
+      });
+      toast(context, friendly(e));
+    }
   }
 
   @override
   void dispose() {
     _unsub?.call();
+    _logTimer?.cancel();
+    Calls.log.removeListener(_callsChanged);
     _input.dispose();
     _scroll.dispose();
     super.dispose();
@@ -208,7 +264,7 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       final list = await Api.messages(m.id);
       if (!mounted) return;
-      final pending = (_msgs ?? []).where((x) => (x.pending || x.failed) && !list.any((y) => y.sender == x.sender && y.body == x.body));
+      final pending = (_msgs ?? []).where((x) => (x.pending || x.failed) && (x.isMedia || !list.any((y) => y.sender == x.sender && y.body == x.body)));
       setState(() => _msgs = [...list, ...pending]);
       Cache.set('msgs:${m.id}', list.length > 80 ? list.sublist(list.length - 80).map((x) => x.toJson()).toList() : list.map((x) => x.toJson()).toList());
       _toBottom();
@@ -230,7 +286,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final list = _msgs ?? [];
     if (list.any((x) => x.id == msg.id)) return;
     setState(() {
-      list.removeWhere((x) => x.pending && x.sender == msg.sender && x.body == msg.body);
+      list.removeWhere((x) => x.pending && !x.isMedia && x.sender == msg.sender && x.body == msg.body);
       list.add(msg);
       _msgs = list;
     });
@@ -340,7 +396,11 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ]),
         ),
-        actions: [IconButton(icon: const Icon(Icons.more_vert), tooltip: 'More options', onPressed: _menu)],
+        actions: [
+          IconButton(icon: const Icon(Icons.call_outlined), tooltip: 'Voice call', onPressed: () => Calls.start(m, false)),
+          IconButton(icon: const Icon(Icons.videocam_outlined), tooltip: 'Video call', onPressed: () => Calls.start(m, true)),
+          IconButton(icon: const Icon(Icons.more_vert), tooltip: 'More options', onPressed: _menu),
+        ],
         shape: Border(bottom: BorderSide(color: p.line)),
       ),
       body: Column(children: [
@@ -372,6 +432,7 @@ class _ChatScreenState extends State<ChatScreen> {
           padding: EdgeInsets.fromLTRB(10, 8, 10, 10 + MediaQuery.of(context).padding.bottom),
           decoration: BoxDecoration(color: p.surface, border: Border(top: BorderSide(color: p.line))),
           child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            IconButton(icon: Icon(Icons.add_photo_alternate_outlined, color: p.muted), tooltip: 'Send a photo or video', onPressed: _attach),
             Expanded(
               child: TextField(
                 controller: _input,
@@ -440,13 +501,32 @@ class _ChatScreenState extends State<ChatScreen> {
   List<Widget> _bubbles(Pal p, List<Message> msgs, Message? lastMine) {
     final out = <Widget>[];
     DateTime? lastDay;
-    for (final msg in msgs) {
-      final day = DateTime(msg.createdAt.year, msg.createdAt.month, msg.createdAt.day);
+    final timeline = <Object>[...msgs, ..._calls]..sort((a, b) => _at(a).compareTo(_at(b)));
+    for (final item in timeline) {
+      final at = _at(item);
+      final day = DateTime(at.year, at.month, at.day);
       if (lastDay != day) {
-        out.add(Padding(padding: const EdgeInsets.fromLTRB(0, 14, 0, 8), child: Center(child: Text(fmtDay(msg.createdAt), style: TextStyle(color: p.muted, fontSize: 12, fontWeight: FontWeight.w700)))));
+        out.add(Padding(padding: const EdgeInsets.fromLTRB(0, 14, 0, 8), child: Center(child: Text(fmtDay(at), style: TextStyle(color: p.muted, fontSize: 12, fontWeight: FontWeight.w700)))));
         lastDay = day;
       }
+      if (item is CallRecord) {
+        out.add(_callRow(p, item));
+        continue;
+      }
+      final msg = item as Message;
       final mine = msg.sender == Api.uid;
+      if (msg.isMedia) {
+        out.add(Align(
+          alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+          child: MediaBubble(
+            key: ValueKey(msg.id),
+            msg: msg,
+            mine: mine,
+            hidden: !mine && !_revealed.contains(msg.id),
+            onReveal: () => setState(() => _revealed.add(msg.id)),
+          ),
+        ));
+      } else {
       out.add(Align(
         alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
         child: Opacity(
@@ -469,6 +549,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
       ));
+      }
       if (identical(msg, lastMine)) {
         out.add(Align(
           alignment: Alignment.centerRight,
@@ -483,5 +564,45 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
     return out;
+  }
+
+  static DateTime _at(Object x) => x is Message ? x.createdAt : (x as CallRecord).createdAt;
+
+  Widget _callRow(Pal p, CallRecord c) {
+    final mine = c.caller == Api.uid, kind = c.video ? 'video' : 'voice', kindCap = c.video ? 'Video' : 'Voice';
+    const outcome = {'declined': 'Declined', 'busy': 'Busy', 'missed': 'No answer', 'cancelled': 'Cancelled', 'failed': "Couldn't connect", 'ringing': 'Ringing…'};
+    var missed = false;
+    final String text;
+    if (c.answeredAt != null) {
+      text = c.endedAt != null ? '$kindCap call · ${fmtDuration(c.endedAt!.difference(c.answeredAt!))}' : '$kindCap call';
+    } else if (mine) {
+      text = '$kindCap call · ${outcome[c.status] ?? ''}';
+    } else if (c.status == 'declined') {
+      text = 'You declined a $kind call';
+    } else {
+      text = 'Missed $kind call';
+      missed = true;
+    }
+    final color = missed ? K.danger : p.text;
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
+        decoration: BoxDecoration(color: p.surface2, borderRadius: BorderRadius.circular(20)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(c.video ? Icons.videocam_outlined : Icons.call_outlined, size: 16, color: color),
+          const SizedBox(width: 8),
+          Flexible(child: Text(text, style: TextStyle(color: color, fontSize: 13.5, fontWeight: FontWeight.w600))),
+          const SizedBox(width: 8),
+          Text(fmtWhen(c.createdAt), style: TextStyle(color: p.muted, fontSize: 12.5)),
+          if (missed)
+            TextButton(
+              onPressed: () => Calls.start(m, c.video),
+              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: const Size(0, 28), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+              child: const Text('Call back', style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+        ]),
+      ),
+    );
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 int? ageFrom(DateTime? b) {
   if (b == null) return null;
   final n = DateTime.now();
@@ -127,17 +129,29 @@ class MatchItem {
 
 class Message {
   final String id, matchId, sender, body;
+
+  /// 'text', 'image' or 'video'. Photos and videos live in the private chat-media bucket at [mediaPath].
+  final String kind;
+  final String? mediaPath;
   final DateTime createdAt;
   DateTime? readAt;
   bool pending, failed;
 
-  Message({required this.id, required this.matchId, required this.sender, required this.body, required this.createdAt, this.readAt, this.pending = false, this.failed = false});
+  /// Only on a photo or video this phone is still sending: its bytes or file, shown until the upload finishes.
+  final Uint8List? localBytes;
+  final String? localFile;
+
+  Message({required this.id, required this.matchId, required this.sender, required this.body, required this.createdAt, this.kind = 'text', this.mediaPath, this.readAt, this.pending = false, this.failed = false, this.localBytes, this.localFile});
+
+  bool get isMedia => kind == 'image' || kind == 'video';
 
   factory Message.fromJson(Map<String, dynamic> j) => Message(
         id: '${j['id']}',
         matchId: '${j['match_id']}',
         sender: '${j['sender']}',
-        body: '${j['body']}',
+        body: '${j['body'] ?? ''}',
+        kind: '${j['kind'] ?? 'text'}',
+        mediaPath: j['media_path'] as String?,
         createdAt: _date(j['created_at']) ?? DateTime.now(),
         readAt: _date(j['read_at']),
       );
@@ -147,7 +161,34 @@ class Message {
         'match_id': matchId,
         'sender': sender,
         'body': body,
+        'kind': kind,
+        'media_path': mediaPath,
         'created_at': createdAt.toUtc().toIso8601String(),
         'read_at': readAt?.toUtc().toIso8601String(),
       };
+}
+
+/// One voice or video call between two matches (the calls table). [offer] and [answer] carry the WebRTC setup.
+class CallRecord {
+  final String id, matchId, caller, callee, status;
+  final bool video;
+  final String? offer, answer;
+  final DateTime createdAt;
+  final DateTime? answeredAt, endedAt;
+
+  CallRecord({required this.id, required this.matchId, required this.caller, required this.callee, required this.status, required this.video, this.offer, this.answer, required this.createdAt, this.answeredAt, this.endedAt});
+
+  factory CallRecord.fromJson(Map<String, dynamic> j) => CallRecord(
+        id: '${j['id']}',
+        matchId: '${j['match_id']}',
+        caller: '${j['caller']}',
+        callee: '${j['callee']}',
+        status: '${j['status']}',
+        video: j['video'] == true,
+        offer: j['offer'] as String?,
+        answer: j['answer'] as String?,
+        createdAt: _date(j['created_at']) ?? DateTime.now(),
+        answeredAt: _date(j['answered_at']),
+        endedAt: _date(j['ended_at']),
+      );
 }

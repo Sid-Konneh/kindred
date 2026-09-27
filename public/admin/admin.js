@@ -168,6 +168,8 @@
         ${tile("Active today", s.active_24h, `<span id="online"></span>${num(s.active_7d)} active this week`)}
         ${tile("Matches", s.matches, `${num(s.matches_7d)} this week`)}
         ${tile("Messages", s.messages, `${num(s.messages_7d)} this week`)}
+        <div class="card tile" id="t-calls"><div class="label">Calls</div><div class="num">…</div></div>
+        <div class="card tile" id="t-media"><div class="label">Photos &amp; videos sent</div><div class="num">…</div></div>
         ${tile("Open reports", s.reports_open, `${num(s.reports_total)} report${s.reports_total === 1 ? "" : "s"} in total`, s.reports_open > 0)}
       </div>
       <div class="grid2">
@@ -184,6 +186,12 @@
         <div class="card"><h2>Looking for</h2><p class="sub">Women ${num(s.women)} · Men ${num(s.men)}</p><div class="hbars">${hbarRows((s.looking_for || []).map(c => [LOOKING[c.label] || c.label, c.count]))}</div></div>
       </div>`;
     $("#rf").onclick = viewOverview;
+    rpc("admin_call_stats").then(c => {
+      const t = $("#t-calls"), m = $("#t-media"); if (!t || !m) return;
+      const avg = c.avg_seconds ? `${Math.floor(c.avg_seconds / 60)}:${String(c.avg_seconds % 60).padStart(2, "0")} average` : "";
+      t.innerHTML = `<div class="label">Calls</div><div class="num">${num(c.calls)}</div><div class="note">${num(c.calls_7d)} this week${c.calls ? ` · ${c.answered_rate}% answered · ${c.video_share}% video` : ""}${avg ? " · " + avg : ""}${c.failed ? ` · ${num(c.failed)} couldn't connect` : ""}</div>`;
+      m.innerHTML = `<div class="label">Photos &amp; videos sent</div><div class="num">${num(c.media)}</div><div class="note">${num(c.media_7d)} this week · ${num(c.videos)} video${c.videos === 1 ? "" : "s"}</div>`;
+    }).catch(() => {});
     rpc("admin_online").then(n => { const el = $("#online"); if (el) el.innerHTML = `<b style="color:var(--good)">● ${num(n)} online now</b><br>`; }).catch(() => {});
     $$("#metric [data-metric]").forEach(b => b.onclick = () => { state.metric = b.dataset.metric; $$("#metric button").forEach(x => x.classList.toggle("on", x === b)); drawActivity(); });
     $$("#range [data-days]").forEach(b => b.onclick = () => { state.days = +b.dataset.days; $$("#range button").forEach(x => x.classList.toggle("on", x === b)); loadActivity(); });

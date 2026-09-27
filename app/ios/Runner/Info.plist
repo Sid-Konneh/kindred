@@ -77,5 +77,11 @@
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
-	</dict>
+		<key>NSCameraUsageDescription</key>
+	<string>Kindred uses the camera for video calls and for photos and videos you send in chat.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Kindred uses the microphone for voice and video calls and for videos you record in chat.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Kindred opens your photos so you can add them to your profile or send them in chat.</string>
+</dict>
 </plist>

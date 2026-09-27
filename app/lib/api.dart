@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'calls.dart';
 import 'config.dart';
 import 'models.dart';
 
@@ -174,8 +175,72 @@ class Api {
   static Future<Message> send(String matchId, String body) async =>
       Message.fromJson(await sb.from('messages').insert({'match_id': matchId, 'sender': uid, 'body': body}).select().single());
 
+  /// Photo or video: upload to the match's private folder, then post a message pointing at it.
+  static Future<Message> sendMedia(String matchId, Uint8List bytes, String kind, String ext, String contentType, {int? duration}) async {
+    final r = Random.secure();
+    final id = List.generate(16, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+    final path = '$matchId/$id.$ext';
+    await sb.storage.from('chat-media').uploadBinary(path, bytes, fileOptions: FileOptions(contentType: contentType, upsert: false));
+    return Message.fromJson(await sb
+        .from('messages')
+        .insert({'match_id': matchId, 'sender': uid, 'body': '', 'kind': kind, 'media_path': path, 'media_meta': duration == null ? null : {'duration': duration}})
+        .select()
+        .single());
+  }
+
+  static final _mediaUrls = <String, (String, DateTime)>{};
+
+  /// Short-lived private link to a chat photo or video (reused for most of its hour).
+  static Future<String> mediaUrl(String path) async {
+    final hit = _mediaUrls[path];
+    if (hit != null && hit.$2.isAfter(DateTime.now())) return hit.$1;
+    final url = await sb.storage.from('chat-media').createSignedUrl(path, 3600);
+    _mediaUrls[path] = (url, DateTime.now().add(const Duration(minutes: 50)));
+    return url;
+  }
+
+  /// Chat files of removed matches are deleted by an edge function (storage can't be cleared from SQL).
+  static Future<void> cleanupMedia() async {
+    try {
+      await sb.functions.invoke('chat-media-cleanup', body: {});
+    } catch (_) {/* retried on the next unmatch or deletion */}
+  }
+
+  // ----- calls: the WebRTC offer and answer travel through the calls table (migration 014) -----
+  static Future<CallRecord> startCall(String matchId, bool video, String offer) async =>
+      CallRecord.fromJson(Map<String, dynamic>.from(await sb.rpc('start_call', params: {'p_match': matchId, 'p_video': video, 'p_offer': offer})));
+  static Future<CallRecord> updateCall(String id, String status, [String? answer]) async =>
+      CallRecord.fromJson(Map<String, dynamic>.from(await sb.rpc('update_call', params: {'p_call': id, 'p_status': status, 'p_answer': answer})));
+  static Future<List<CallRecord>> ringingCalls() async {
+    final rows = await sb.rpc('my_ringing_calls');
+    return (rows as List).map((r) => CallRecord.fromJson(Map<String, dynamic>.from(r))).toList();
+  }
+
+  static Future<List<CallRecord>> callLog(String matchId) async {
+    final rows = await sb.from('calls').select('id,match_id,caller,callee,video,status,created_at,answered_at,ended_at').eq('match_id', matchId).order('created_at', ascending: false).limit(40);
+    return rows.map(CallRecord.fromJson).toList();
+  }
+
+  /// Calls to me (new and updated) and updates to calls I made. Returns a function that stops listening.
+  static VoidCallback onCalls(void Function(CallRecord c) cb) {
+    final me = uid!;
+    void h(PostgresChangePayload p) => cb(CallRecord.fromJson(p.newRecord));
+    final toMe = PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'callee', value: me);
+    final fromMe = PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'caller', value: me);
+    final ch = sb
+        .channel('calls:$me')
+        .onPostgresChanges(event: PostgresChangeEvent.insert, schema: 'public', table: 'calls', filter: toMe, callback: h)
+        .onPostgresChanges(event: PostgresChangeEvent.update, schema: 'public', table: 'calls', filter: toMe, callback: h)
+        .onPostgresChanges(event: PostgresChangeEvent.update, schema: 'public', table: 'calls', filter: fromMe, callback: h)
+        .subscribe();
+    return () => sb.removeChannel(ch);
+  }
+
   static Future<void> markRead(String matchId) => sb.rpc('mark_read', params: {'p_match': matchId});
-  static Future<void> unmatch(String matchId) => sb.rpc('unmatch', params: {'p_match': matchId});
+  static Future<void> unmatch(String matchId) async {
+    await sb.rpc('unmatch', params: {'p_match': matchId});
+    cleanupMedia();
+  }
   static Future<void> block(String userId) => sb.from('blocks').insert({'blocker': uid, 'blocked': userId});
   static Future<void> report(String userId, String reason, String details) async {
     await sb.from('reports').insert({'reporter': uid, 'reported': userId, 'reason': reason, 'details': details.isEmpty ? null : details});
@@ -188,7 +253,14 @@ class Api {
     final me = uid!;
     final files = await sb.storage.from('photos').list(path: me);
     if (files.isNotEmpty) await sb.storage.from('photos').remove(files.map((f) => '$me/${f.name}').toList());
+    final sent = await sb.from('messages').select('media_path').eq('sender', me).not('media_path', 'is', null).limit(1000);
+    if (sent.isNotEmpty) {
+      try {
+        await sb.storage.from('chat-media').remove(sent.map((x) => '${x['media_path']}').toList());
+      } catch (_) {/* the cleanup below catches anything left */}
+    }
     await sb.rpc('delete_my_account');
+    await cleanupMedia();
     await Cache.clear();
     await sb.auth.signOut();
   }
@@ -217,6 +289,7 @@ class AppState extends ChangeNotifier {
   Future<void> load(Session? s) async {
     final changed = s?.user.id != session?.user.id;
     session = s;
+    if (changed) Calls.watch(s != null);
     if (s == null) {
       me = null;
       matches = null;

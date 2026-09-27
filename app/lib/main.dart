@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'api.dart';
+import 'calls.dart';
 import 'config.dart';
 import 'screens/auth.dart';
 import 'screens/home.dart';
@@ -44,7 +45,7 @@ class Root extends StatefulWidget {
   State<Root> createState() => _RootState();
 }
 
-class _RootState extends State<Root> {
+class _RootState extends State<Root> with WidgetsBindingObserver {
   bool _splash = true;
   StreamSubscription<AuthState>? _sub;
 
@@ -52,7 +53,14 @@ class _RootState extends State<Root> {
   void initState() {
     super.initState();
     app.addListener(_changed);
+    WidgetsBinding.instance.addObserver(this);
     _boot();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    // Realtime may have slept in the background: catch a call that is ringing right now.
+    if (s == AppLifecycleState.resumed) Calls.checkRinging();
   }
 
   Future<void> _boot() async {
@@ -106,6 +114,7 @@ class _RootState extends State<Root> {
   @override
   void dispose() {
     _sub?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     app.removeListener(_changed);
     super.dispose();
   }
