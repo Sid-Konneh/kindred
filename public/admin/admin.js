@@ -15,8 +15,11 @@
     suspend: "Suspended member", unsuspend: "Lifted suspension", remove_photo: "Removed a photo", delete_member: "Deleted member",
     mark_test: "Marked as test account", unmark_test: "Unmarked test account", admin_add: "Added to admin team", admin_remove: "Removed from admin team",
     report_reviewed: "Closed report (no action)", report_actioned: "Closed report (action taken)", report_open: "Reopened report",
+    flag_dismissed: "Dismissed scam alert", flag_actioned: "Closed scam alert (action taken)", flag_open: "Reopened scam alert",
+    note_add: "Added a private note", note_delete: "Deleted a private note", export_members: "Exported members (CSV)", export_reports: "Exported reports (CSV)",
   };
-  const state = { me: null, tab: "overview", reportStatus: "open", memberFilter: "all", memberSearch: "", memberOffset: 0, openReports: 0 };
+  const METRICS = [["signups", "New members", "new"], ["matches", "Matches", "matches"], ["messages", "Messages", "messages"], ["likes", "Likes", "likes"], ["reports", "Reports", "reports"], ["flags", "Scam alerts", "alerts"]];
+  const state = { me: null, tab: "overview", reportStatus: "open", memberFilter: "all", memberSearch: "", memberOffset: 0, openReports: 0, openFlags: 0, flagStatus: "open", metric: "signups", days: 30 };
 
   const ICON = {
     overview: '<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>',
@@ -24,6 +27,8 @@
     members: '<circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M17 11a3 3 0 1 0 0-6M22 21a6 6 0 0 0-5-5.9"/>',
     team: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>',
     activity: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    flags: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/>',
+    photos: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
   };
   const svgI = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
   const MARK = '<svg width="28" height="28" viewBox="0 0 100 100" fill="none" stroke="url(#kg)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"><defs><linearGradient id="kg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F2436B"/><stop offset="1" stop-color="#FF8A3D"/></linearGradient></defs><path d="M43 27.5C36 20.5 24.5 21.5 18 32c-8 14 2 32 32 52"/><path d="M57 27.5C64 20.5 75.5 21.5 82 32c8 14-2 32-32 52" stroke-opacity=".82"/><circle cx="50" cy="16" r="5" fill="#F2436B" stroke="none"/></svg>';
@@ -115,16 +120,16 @@
     }
     state.me = me;
     const t = location.hash.slice(1);
-    state.tab = ["overview", "reports", "members", "team", "activity"].includes(t) ? t : "overview";
+    state.tab = ["overview", "reports", "flags", "photos", "members", "team", "activity"].includes(t) ? t : "overview";
     renderShell();
   }
 
   /* ---------- shell ---------- */
   function renderShell() {
-    const tabs = [["overview", "Overview"], ["reports", "Reports"], ["members", "Members"], ["team", "Admin team"], ["activity", "Activity log"]];
+    const tabs = [["overview", "Overview"], ["reports", "Reports"], ["flags", "Scam alerts"], ["photos", "Photo review"], ["members", "Members"], ["team", "Admin team"], ["activity", "Activity log"]];
     root.innerHTML = `<div class="shell"><aside class="side">
       <div class="brand">${MARK}kindred <small>Admin</small></div>
-      <nav class="nav">${tabs.map(([k, l]) => `<a href="#${k}" data-tab="${k}" class="${state.tab === k ? "on" : ""}">${svgI(ICON[k === "team" ? "team" : k])}${l}${k === "reports" ? `<span class="count" id="rc" ${state.openReports ? "" : "hidden"}>${state.openReports}</span>` : ""}</a>`).join("")}</nav>
+      <nav class="nav">${tabs.map(([k, l]) => `<a href="#${k}" data-tab="${k}" class="${state.tab === k ? "on" : ""}">${svgI(ICON[k === "team" ? "team" : k])}${l}${k === "reports" ? `<span class="count" id="rc" ${state.openReports ? "" : "hidden"}>${state.openReports}</span>` : ""}${k === "flags" ? `<span class="count" id="fc" ${state.openFlags ? "" : "hidden"}>${state.openFlags}</span>` : ""}</a>`).join("")}</nav>
       <div class="me"><b>${esc(state.me.name || state.me.email)}</b><span class="muted">${esc(state.me.email)}</span><div style="margin:8px 0"><span class="role ${state.me.role}">${state.me.role === "super_admin" ? "Super admin" : "Moderator"}</span></div>
         <button class="btn sm" id="out">Sign out</button> <a class="btn sm ghost" href="../app/">Open app</a></div>
       </aside><main id="main"></main></div>`;
@@ -137,10 +142,11 @@
     state.tab = tab;
     history.replaceState(null, "", "#" + tab);
     $$("[data-tab]").forEach(a => a.classList.toggle("on", a.dataset.tab === tab));
-    ({ overview: viewOverview, reports: viewReports, members: viewMembers, team: viewTeam, activity: viewActivity })[tab]();
+    ({ overview: viewOverview, reports: viewReports, flags: viewFlags, photos: viewPhotos, members: viewMembers, team: viewTeam, activity: viewActivity })[tab]();
   }
   async function refreshReportCount() {
     try { const s = await rpc("admin_reports", { p_status: "open", p_limit: 500 }); state.openReports = s.length; const el = $("#rc"); if (el) { el.textContent = s.length; el.hidden = !s.length; } } catch { /* ignore */ }
+    try { const f = await rpc("admin_flags", { p_status: "open", p_limit: 500 }); state.openFlags = f.length; const el = $("#fc"); if (el) { el.textContent = f.length; el.hidden = !f.length; } } catch { /* ignore */ }
   }
   const main = () => $("#main");
   const loading = () => { main().innerHTML = '<div class="boot" style="min-height:40vh"><span class="spin"></span></div>'; };
@@ -164,10 +170,12 @@
         ${tile("Open reports", s.reports_open, `${num(s.reports_total)} report${s.reports_total === 1 ? "" : "s"} in total`, s.reports_open > 0)}
       </div>
       <div class="grid2">
-        <div class="card"><h2>New members per day</h2><p class="sub">Last 30 days</p><div id="signups"></div></div>
-        <div class="card"><h2>Engagement</h2><p class="sub">All time</p>
-          <div class="hbars">${hbarRows([["Likes given", s.likes], ["Passes", s.passes]], true)}</div>
-          <p class="sub" style="margin:16px 0 0">Like rate <b style="color:var(--text)">${likeRate}%</b> of swipes · Suspended members <b style="color:var(--text)">${num(s.suspended)}</b></p></div>
+        <div class="card"><div class="head" style="margin:0 0 8px;align-items:flex-start"><div><h2 id="act-title">Activity per day</h2><p class="sub" id="act-sub" style="margin:0"></p></div>
+            <div class="seg" id="range">${[[30, "30 days"], [90, "90 days"]].map(([d, l]) => `<button data-days="${d}" class="${state.days === d ? "on" : ""}">${l}</button>`).join("")}</div></div>
+          <div class="seg" id="metric" style="margin-bottom:12px">${METRICS.map(([k, l]) => `<button data-metric="${k}" class="${state.metric === k ? "on" : ""}">${l}</button>`).join("")}</div>
+          <div id="signups"><div class="boot" style="min-height:220px"><span class="spin"></span></div></div></div>
+        <div class="card"><h2>Sign-up funnel</h2><p class="sub">How far real members get after joining</p><div class="hbars" id="funnel"><div class="boot" style="min-height:160px"><span class="spin"></span></div></div>
+          <p class="sub" style="margin:16px 0 0">Like rate <b style="color:var(--text)">${likeRate}%</b> of ${num(s.likes + s.passes)} swipes · Suspended members <b style="color:var(--text)">${num(s.suspended)}</b></p></div>
       </div>
       <div class="grid3">
         <div class="card"><h2>Top towns</h2><p class="sub">Where members live</p><div class="hbars">${hbarRows((s.top_cities || []).map(c => [c.label, c.count]))}</div></div>
@@ -175,7 +183,29 @@
         <div class="card"><h2>Looking for</h2><p class="sub">Women ${num(s.women)} · Men ${num(s.men)}</p><div class="hbars">${hbarRows((s.looking_for || []).map(c => [LOOKING[c.label] || c.label, c.count]))}</div></div>
       </div>`;
     $("#rf").onclick = viewOverview;
-    barChart($("#signups"), (s.signups_daily || []).map(d => ({ label: d.day, value: d.count })));
+    $$("#metric [data-metric]").forEach(b => b.onclick = () => { state.metric = b.dataset.metric; $$("#metric button").forEach(x => x.classList.toggle("on", x === b)); drawActivity(); });
+    $$("#range [data-days]").forEach(b => b.onclick = () => { state.days = +b.dataset.days; $$("#range button").forEach(x => x.classList.toggle("on", x === b)); loadActivity(); });
+    loadActivity();
+    rpc("admin_funnel").then(steps => {
+      const first = steps[0]?.count || 0;
+      $("#funnel").innerHTML = steps.map(st => `<div class="hb" title="${esc(st.label)}: ${num(st.count)}"><span class="k">${esc(st.label)}</span><span class="track"><span class="fill" style="width:${first && st.count ? Math.max(2, (100 * st.count) / first) : 0}%"></span></span><span class="v">${num(st.count)}</span></div>`).join("")
+        + (first ? `<p class="sub" style="margin:10px 0 0">${Math.round((100 * (steps[5]?.count || 0)) / first)}% of members have sent a message.</p>` : "");
+    }).catch(e => { $("#funnel").innerHTML = `<p class="empty">${esc(friendly(e))}</p>`; });
+  }
+  let activity = [];
+  async function loadActivity() {
+    const el = $("#signups"); if (!el) return;
+    el.innerHTML = '<div class="boot" style="min-height:220px"><span class="spin"></span></div>';
+    try { activity = await rpc("admin_activity", { p_days: state.days }); drawActivity(); }
+    catch (e) { el.innerHTML = `<p class="empty">${esc(friendly(e))}</p>`; }
+  }
+  function drawActivity() {
+    const el = $("#signups"); if (!el) return;
+    const [, label, unit] = METRICS.find(m => m[0] === state.metric);
+    const total = activity.reduce((n, d) => n + d[state.metric], 0);
+    $("#act-title").textContent = `${label} per day`;
+    $("#act-sub").textContent = `Last ${state.days} days · ${num(total)} in total`;
+    barChart(el, activity.map(d => ({ label: d.day, value: d[state.metric] })), unit);
   }
   function hbarRows(rows, keepZero) {
     rows = rows.filter(([, v]) => keepZero || v > 0);
@@ -183,7 +213,7 @@
     const max = Math.max(...rows.map(r => r[1]), 1);
     return rows.map(([k, v]) => `<div class="hb" title="${esc(k)}: ${num(v)}"><span class="k">${esc(k)}</span><span class="track"><span class="fill" style="width:${v ? Math.max(2, (100 * v) / max) : 0}%"></span></span><span class="v">${num(v)}</span></div>`).join("");
   }
-  function barChart(el, data) {
+  function barChart(el, data, unit = "new") {
     const narrow = el.clientWidth < 520;
     const W = narrow ? 360 : 640, H = narrow ? 240 : 220, pad = { l: 30, r: 6, t: 10, b: 26 };
     const max = Math.max(1, ...data.map(d => d.value));
@@ -199,16 +229,16 @@
       const x = pad.l + i * bw + 1, w = Math.max(2, bw - 2), yy = y(d.value), h = pad.t + ih - yy;
       bars += `<rect class="hit" x="${pad.l + i * bw}" y="${pad.t}" width="${bw}" height="${ih}" data-i="${i}"/>`;
       if (d.value > 0) bars += `<path class="bar" data-b="${i}" d="M${x},${pad.t + ih} V${yy + Math.min(4, h)} q0,-${Math.min(4, h)} ${Math.min(4, w / 2)},-${Math.min(4, h)} H${x + w - Math.min(4, w / 2)} q${Math.min(4, w / 2)},0 ${Math.min(4, w / 2)},${Math.min(4, h)} V${pad.t + ih} Z"/>`;
-      if (i === 0 || i === data.length - 1 || (i % (narrow ? 14 : 7) === 0 && i < data.length - (narrow ? 8 : 4))) bars += `<text class="ax" x="${pad.l + i * bw + bw / 2}" y="${H - 6}" text-anchor="middle">${fmt(d.label)}</text>`;
+      if (i === 0 || i === data.length - 1 || (i % Math.max(narrow ? 14 : 7, Math.ceil(data.length / (narrow ? 3 : 5))) === 0 && i < data.length - Math.ceil(data.length / (narrow ? 5 : 8)))) bars += `<text class="ax" x="${pad.l + i * bw + bw / 2}" y="${H - 6}" text-anchor="middle">${fmt(d.label)}</text>`;
     });
-    el.innerHTML = `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="New members per day for the last 30 days">${g}${bars}</svg><div class="tip"></div></div>
-      <details class="tv"><summary>Show as table</summary><table><thead><tr><th>Day</th><th>New members</th></tr></thead><tbody>${data.map(d => `<tr><td>${fmt(d.label)}</td><td>${d.value}</td></tr>`).join("")}</tbody></table></details>`;
+    el.innerHTML = `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(unit)} per day for the last ${data.length} days">${g}${bars}</svg><div class="tip"></div></div>
+      <details class="tv"><summary>Show as table</summary><table><thead><tr><th>Day</th><th>${esc(unit)}</th></tr></thead><tbody>${data.map(d => `<tr><td>${fmt(d.label)}</td><td>${d.value}</td></tr>`).join("")}</tbody></table></details>`;
     const tip = $(".tip", el), svg = $("svg", el);
     $$(".hit", el).forEach(h => {
       h.addEventListener("mouseenter", () => {
         const i = +h.dataset.i, d = data[i], r = svg.getBoundingClientRect(), sx = r.width / W;
         $$(".bar", el).forEach(b => b.classList.toggle("hl", b.dataset.b === String(i)));
-        tip.innerHTML = `${fmt(d.label)} · <b>${d.value}</b> new`;
+        tip.innerHTML = `${fmt(d.label)} · <b>${d.value}</b> ${esc(unit)}`;
         tip.style.left = (pad.l + i * bw + bw / 2) * sx + "px"; tip.style.top = y(d.value) * sx + "px"; tip.classList.add("on");
       });
       h.addEventListener("mouseleave", () => { tip.classList.remove("on"); $$(".bar", el).forEach(b => b.classList.remove("hl")); });
@@ -218,9 +248,10 @@
   /* ---------- reports ---------- */
   async function viewReports() {
     const tabs = [["open", "Open"], ["reviewed", "Closed, no action"], ["actioned", "Action taken"], ["all", "All"]];
-    main().innerHTML = `<div class="head"><div><h1>Reports</h1><p>Handle the oldest open reports first. Evidence is the chat as it was when the report was sent.</p></div></div>
+    main().innerHTML = `<div class="head"><div><h1>Reports</h1><p>Handle the oldest open reports first. Evidence is the chat as it was when the report was sent.</p></div>${exportBtn("admin_export_reports", "kindred-reports", "Export CSV")}</div>
       <div class="toolbar"><div class="seg">${tabs.map(([k, l]) => `<button data-s="${k}" class="${state.reportStatus === k ? "on" : ""}">${l}</button>`).join("")}</div></div><div id="rl"></div>`;
     $$("[data-s]").forEach(b => b.onclick = () => { state.reportStatus = b.dataset.s; viewReports(); });
+    wireExport();
     const list = $("#rl");
     list.innerHTML = '<div class="boot" style="min-height:30vh"><span class="spin"></span></div>';
     let rows;
@@ -273,14 +304,122 @@
     });
   }
 
+  /* ---------- CSV export ---------- */
+  async function exportCsv(fnName, file) {
+    try {
+      const rows = await rpc(fnName);
+      if (!rows.length) return toast("Nothing to export yet");
+      const ORDER = {
+        admin_export_members: ["name", "email", "age", "gender", "city", "looking_for", "onboarded", "photos", "suspended", "test_account", "reports_against", "joined", "last_active"],
+        admin_export_reports: ["created", "reason", "details", "status", "reporter", "reported", "reported_email", "resolved_by", "resolved_at", "note"],
+      };
+      const cols = (ORDER[fnName] || Object.keys(rows[0])).filter(c => c in rows[0]);
+      const cell = v => { const s = v == null ? "" : String(v); return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+      const csv = "﻿" + [cols.join(","), ...rows.map(r => cols.map(c => cell(r[c])).join(","))].join("\r\n");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      a.download = `${file}-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.append(a); a.click(); a.remove();
+      toast(`Exported ${rows.length} row${rows.length === 1 ? "" : "s"}`);
+    } catch (e) { toast(friendly(e)); }
+  }
+  const exportBtn = (fn, file, label) => state.me.role === "super_admin" ? `<button class="btn sm" data-export="${fn}" data-file="${file}">${label}</button>` : "";
+  const wireExport = () => $$("[data-export]").forEach(b => b.onclick = () => exportCsv(b.dataset.export, b.dataset.file));
+
+  /* ---------- scam alerts ---------- */
+  const CATEGORY = { money: ["Money request", "bad"], off_platform: ["Moving off Kindred", "warn"] };
+  async function viewFlags() {
+    const tabs = [["open", "Open"], ["dismissed", "Dismissed"], ["actioned", "Action taken"], ["all", "All"]];
+    main().innerHTML = `<div class="head"><div><h1>Scam alerts</h1><p>Messages flagged automatically because they mention money (Orange Money, Afrimoney, airtime, amounts in Leones) or try to move the chat to WhatsApp or a phone number. Many are harmless, so check before acting.</p></div></div>
+      <div class="toolbar"><div class="seg">${tabs.map(([k, l]) => `<button data-fs="${k}" class="${state.flagStatus === k ? "on" : ""}">${l}</button>`).join("")}</div></div><div id="fl"></div>`;
+    $$("[data-fs]").forEach(b => b.onclick = () => { state.flagStatus = b.dataset.fs; viewFlags(); });
+    const list = $("#fl");
+    list.innerHTML = '<div class="boot" style="min-height:30vh"><span class="spin"></span></div>';
+    let rows;
+    try { rows = await rpc("admin_flags", { p_status: state.flagStatus, p_limit: 300 }); } catch (e) { list.innerHTML = `<div class="card empty">${esc(friendly(e))}</div>`; return; }
+    if (!rows.length) { list.innerHTML = `<div class="card empty">${state.flagStatus === "open" ? "No scam alerts waiting." : "Nothing here yet."}</div>`; return; }
+    const mark = (body, m) => { const b = esc(body); if (!m) return b; const i = body.toLowerCase().indexOf(m.toLowerCase()); return i < 0 ? b : esc(body.slice(0, i)) + `<mark style="background:color-mix(in srgb,var(--bad) 22%,transparent);color:inherit;border-radius:4px;padding:0 2px">${esc(body.slice(i, i + m.length))}</mark>` + esc(body.slice(i + m.length)); };
+    list.innerHTML = rows.map(f => {
+      const [cl, tone] = CATEGORY[f.category] || [f.category, ""], s = f.sender || {};
+      return `<div class="card report" data-id="${f.id}">
+        <div class="top"><div><span class="badge ${tone}">${cl}</span>
+          <div class="who" style="margin-top:6px"><a data-member="${s.id}">${esc(s.name)}</a> wrote to ${f.recipient ? `<a data-member="${f.recipient.id}">${esc(f.recipient.name)}</a>` : "a match"} · ${when(f.created_at)}
+            ${s.flags > 1 ? `<span class="badge bad">${s.flags} alerts on this member</span>` : ""}${s.banned_at ? '<span class="badge bad">Suspended</span>' : ""}</div></div>
+          <div>${{ open: '<span class="badge warn">Open</span>', dismissed: '<span class="badge">Dismissed</span>', actioned: '<span class="badge good">Action taken</span>' }[f.status]}</div></div>
+        <div class="details" style="font-size:15px">“${mark(f.body, f.matched)}”</div>
+        ${f.resolved_by ? `<p class="muted" style="font-size:13px;margin:10px 0 0">Handled by ${esc(f.resolved_by)} ${when(f.resolved_at)}</p>` : ""}
+        <div class="actions">${f.status === "open" ? `${s.banned_at ? "" : `<button class="btn sm danger" data-fa="suspend">Suspend ${esc(s.name)}</button>`}
+            <button class="btn sm" data-fa="dismissed">Not a problem</button><button class="btn sm" data-fa="actioned">Close: action taken</button>`
+          : `<button class="btn sm" data-fa="open">Reopen</button>`}
+          <button class="btn sm ghost" data-member="${s.id}">View ${esc(s.name)}</button></div></div>`;
+    }).join("");
+    $$("[data-member]", list).forEach(a => a.onclick = () => openMember(a.dataset.member));
+    $$("[data-fa]", list).forEach(b => b.onclick = async () => {
+      const id = b.closest(".report").dataset.id, f = rows.find(x => x.id === id), act = b.dataset.fa;
+      try {
+        if (act === "suspend") {
+          const reason = await ask({ title: `Suspend ${f.sender.name}?`, text: "They'll be signed out, can't sign back in, and disappear from every feed and chat. All their open scam alerts will be closed.", input: { label: "Reason (kept in the log)", required: "Give a reason.", multiline: true, placeholder: CATEGORY[f.category]?.[0] }, confirm: "Suspend", danger: true });
+          if (!reason) return;
+          await rpc("admin_suspend", { p_user: f.sender.id, p_reason: reason });
+          await rpc("admin_resolve_flags_for", { p_sender: f.sender.id, p_status: "actioned" });
+          toast(`${f.sender.name} suspended`);
+        } else {
+          await rpc("admin_resolve_flag", { p_id: id, p_status: act });
+          toast(act === "open" ? "Alert reopened" : "Alert closed");
+        }
+        refreshReportCount(); viewFlags();
+      } catch (e) { toast(friendly(e)); }
+    });
+  }
+
+  /* ---------- photo review ---------- */
+  async function viewPhotos(append) {
+    if (!append) {
+      state.photoCursor = null;
+      main().innerHTML = `<div class="head"><div><h1>Photo review</h1><p>The newest photos on member profiles, so you can remove anything that breaks the rules before someone reports it.</p></div></div>
+        <div id="pg" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px"></div>
+        <div style="text-align:center;margin-top:16px"><button class="btn" id="more" hidden>Load more</button></div>`;
+      $("#more").onclick = () => viewPhotos(true);
+    }
+    const grid = $("#pg"), more = $("#more");
+    if (!append) grid.innerHTML = '<div class="boot" style="min-height:30vh;grid-column:1/-1"><span class="spin"></span></div>';
+    let rows;
+    try { rows = await rpc("admin_recent_photos", { p_limit: 60, p_before: state.photoCursor }); } catch (e) { grid.innerHTML = `<div class="card empty" style="grid-column:1/-1">${esc(friendly(e))}</div>`; return; }
+    if (!append) grid.innerHTML = "";
+    if (!rows.length && !append) { grid.innerHTML = '<div class="card empty" style="grid-column:1/-1">No photos yet.</div>'; more.hidden = true; return; }
+    const base = `${CFG.SUPABASE_URL}/storage/v1/object/public/photos/`;
+    grid.insertAdjacentHTML("beforeend", rows.map(r => {
+      const url = base + r.path.split("/").map(encodeURIComponent).join("/");
+      return `<div class="card" style="padding:8px" data-url="${esc(url)}" data-member-id="${r.member.id}">
+        <div class="thumb" style="width:100%"><img src="${esc(url)}" alt="Photo by ${esc(r.member.name)}" loading="lazy"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:8px;font-size:13px">
+          <a data-member="${r.member.id}" style="font-weight:700;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.member.name)}</a><span class="muted">${when(r.uploaded_at)}</span></div>
+        ${r.member.is_test ? '<span class="badge">Test</span>' : ""}${r.member.banned_at ? '<span class="badge bad">Suspended</span>' : ""}
+        <button class="btn sm danger" style="width:100%;margin-top:8px" data-rm>Remove photo</button></div>`;
+    }).join(""));
+    state.photoCursor = rows.length ? rows[rows.length - 1].uploaded_at : state.photoCursor;
+    more.hidden = rows.length < 60;
+    $$("[data-member]", grid).forEach(a => a.onclick = () => openMember(a.dataset.member));
+    $$("[data-rm]", grid).forEach(b => b.onclick = async () => {
+      const card = b.closest("[data-url]");
+      if (!(await ask({ title: "Remove this photo?", text: "It's taken off the member's profile and deleted from storage.", confirm: "Remove photo", danger: true }))) return;
+      try {
+        await rpc("admin_remove_photo", { p_user: card.dataset.memberId, p_url: card.dataset.url });
+        const p = storagePath(card.dataset.url); if (p) await sb.storage.from("photos").remove([p]);
+        card.remove(); toast("Photo removed");
+      } catch (e) { toast(friendly(e)); }
+    });
+  }
+
   /* ---------- members ---------- */
   async function viewMembers() {
     const filters = [["all", "All"], ["reported", "Reported"], ["suspended", "Suspended"], ["incomplete", "Profile not finished"], ["admins", "Admins"], ["test", "Test accounts"]];
-    main().innerHTML = `<div class="head"><div><h1>Members</h1><p>Search by name, email or town. Click a member to see their full profile and take action.</p></div></div>
+    main().innerHTML = `<div class="head"><div><h1>Members</h1><p>Search by name, email or town. Click a member to see their full profile and take action.</p></div>${exportBtn("admin_export_members", "kindred-members", "Export CSV")}</div>
       <div class="toolbar"><input type="search" id="q" placeholder="Search members…" value="${esc(state.memberSearch)}">
         <div class="seg">${filters.map(([k, l]) => `<button data-f="${k}" class="${state.memberFilter === k ? "on" : ""}">${l}</button>`).join("")}</div></div>
       <div id="ml"></div>`;
     let t;
+    wireExport();
     $("#q").oninput = e => { clearTimeout(t); t = setTimeout(() => { state.memberSearch = e.target.value; state.memberOffset = 0; loadMembers(); }, 300); };
     $$("[data-f]").forEach(b => b.onclick = () => { state.memberFilter = b.dataset.f; state.memberOffset = 0; $$("[data-f]").forEach(x => x.classList.toggle("on", x === b)); loadMembers(); });
     loadMembers();
@@ -327,12 +466,32 @@
         <dt>Joined</dt><dd>${fullDate(m.created_at)}</dd><dt>Last signed in</dt><dd>${fullDate(m.last_sign_in_at)}</dd><dt>Last active</dt><dd>${fullDate(m.last_active)}</dd>
         <dt>Likes given</dt><dd>${num(c.likes_given)}</dd><dt>Blocked by</dt><dd>${num(c.blocked_by)} member${c.blocked_by === 1 ? "" : "s"}</dd><dt>Reports made</dt><dd>${num(c.reports_made)}</dd></dl>
       ${m.reports_against?.length ? `<h3>Reports against ${esc(m.name)}</h3>${m.reports_against.map(r => `<div style="font-size:14px;margin-bottom:6px">${esc(r.reason)} <span class="muted">· ${when(r.created_at)}</span> <span class="badge ${r.status === "open" ? "warn" : r.status === "actioned" ? "good" : ""}">${({ open: "Open", reviewed: "Closed, no action", actioned: "Action taken" })[r.status] || r.status}</span></div>`).join("")}` : ""}
+      <h3>Private notes</h3><p class="muted" style="margin:-4px 0 8px;font-size:13px">Only the admin team can see these. The member never does.</p>
+      <form id="noteform" style="display:flex;gap:8px"><input name="note" maxlength="2000" placeholder="e.g. Warned about sharing phone numbers" style="flex:1;height:38px;padding:0 12px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface)"><button class="btn sm primary" type="submit" style="height:38px">Add note</button></form>
+      <div id="notes" style="margin-top:10px"><span class="muted" style="font-size:13px">Loading…</span></div>
       <h3>Actions</h3><div style="display:flex;gap:8px;flex-wrap:wrap">
         ${m.banned_at ? '<button class="btn" data-a="unsuspend">Lift suspension</button>' : '<button class="btn danger" data-a="suspend">Suspend member</button>'}
         ${superA && !m.admin_role ? '<button class="btn" data-a="make-admin">Add to admin team</button>' : ""}
         ${superA ? `<button class="btn" data-a="test">${m.is_test ? "Unmark test account" : "Mark as test account"}</button>` : ""}</div>
       ${superA ? `<div class="danger-zone"><b>Delete member</b><p class="muted" style="margin:4px 0 10px;font-size:14px">Permanently removes their account, photos, matches and messages. Can't be undone.</p><button class="btn danger sm" data-a="delete">Delete ${esc(m.name)}</button></div>` : ""}`;
     $("[data-close]", drawer).onclick = closeDrawer;
+    const loadNotes = async () => {
+      const box = $("#notes", drawer); if (!box) return;
+      try {
+        const notes = await rpc("admin_notes", { p_member: id });
+        box.innerHTML = notes.length ? notes.map(n => `<div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;font-size:14px">
+            <div style="white-space:pre-wrap">${esc(n.body)}</div>
+            <div class="muted" style="font-size:12px;margin-top:4px;display:flex;justify-content:space-between;gap:8px"><span>${esc(n.admin || "Former admin")} · ${when(n.created_at)}</span>
+              ${n.mine || state.me.role === "super_admin" ? `<button class="btn sm ghost" style="height:24px;padding:0 6px" data-delnote="${n.id}">Delete</button>` : ""}</div></div>`).join("")
+          : '<span class="muted" style="font-size:13px">No notes yet.</span>';
+        $$("[data-delnote]", box).forEach(b => b.onclick = async () => { try { await rpc("admin_delete_note", { p_id: b.dataset.delnote }); loadNotes(); } catch (e) { toast(friendly(e)); } });
+      } catch (e) { box.innerHTML = `<span class="err">${esc(friendly(e))}</span>`; }
+    };
+    loadNotes();
+    $("#noteform", drawer).onsubmit = async e => {
+      e.preventDefault(); const inp = e.target.note, v = inp.value.trim(); if (!v) return;
+      try { await rpc("admin_add_note", { p_member: id, p_body: v }); inp.value = ""; loadNotes(); } catch (err) { toast(friendly(err)); }
+    };
     const act = async (fn, msg) => { try { await fn(); if (msg) toast(msg); openMember(id); if (state.tab === "members") loadMembers(); } catch (e) { toast(friendly(e)); } };
     $$("[data-rmphoto]", drawer).forEach(b => b.onclick = async () => {
       if (!(await ask({ title: "Remove this photo?", text: "It's taken off their profile and deleted from storage.", confirm: "Remove photo", danger: true }))) return;
