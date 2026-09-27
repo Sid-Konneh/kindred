@@ -28,6 +28,7 @@
     team: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>',
     activity: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     flags: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/>',
+    insights: '<path d="M12 20V10M18 20V4M6 20v-4"/>',
     photos: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
   };
   const svgI = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
@@ -120,13 +121,13 @@
     }
     state.me = me;
     const t = location.hash.slice(1);
-    state.tab = ["overview", "reports", "flags", "photos", "members", "team", "activity"].includes(t) ? t : "overview";
+    state.tab = ["overview", "insights", "reports", "flags", "photos", "members", "team", "activity"].includes(t) ? t : "overview";
     renderShell();
   }
 
   /* ---------- shell ---------- */
   function renderShell() {
-    const tabs = [["overview", "Overview"], ["reports", "Reports"], ["flags", "Scam alerts"], ["photos", "Photo review"], ["members", "Members"], ["team", "Admin team"], ["activity", "Activity log"]];
+    const tabs = [["overview", "Overview"], ["insights", "Insights"], ["reports", "Reports"], ["flags", "Scam alerts"], ["photos", "Photo review"], ["members", "Members"], ["team", "Admin team"], ["activity", "Activity log"]];
     root.innerHTML = `<div class="shell"><aside class="side">
       <div class="brand">${MARK}kindred <small>Admin</small></div>
       <nav class="nav">${tabs.map(([k, l]) => `<a href="#${k}" data-tab="${k}" class="${state.tab === k ? "on" : ""}">${svgI(ICON[k === "team" ? "team" : k])}${l}${k === "reports" ? `<span class="count" id="rc" ${state.openReports ? "" : "hidden"}>${state.openReports}</span>` : ""}${k === "flags" ? `<span class="count" id="fc" ${state.openFlags ? "" : "hidden"}>${state.openFlags}</span>` : ""}</a>`).join("")}</nav>
@@ -142,7 +143,7 @@
     state.tab = tab;
     history.replaceState(null, "", "#" + tab);
     $$("[data-tab]").forEach(a => a.classList.toggle("on", a.dataset.tab === tab));
-    ({ overview: viewOverview, reports: viewReports, flags: viewFlags, photos: viewPhotos, members: viewMembers, team: viewTeam, activity: viewActivity })[tab]();
+    ({ overview: viewOverview, insights: viewInsights, reports: viewReports, flags: viewFlags, photos: viewPhotos, members: viewMembers, team: viewTeam, activity: viewActivity })[tab]();
   }
   async function refreshReportCount() {
     try { const s = await rpc("admin_reports", { p_status: "open", p_limit: 500 }); state.openReports = s.length; const el = $("#rc"); if (el) { el.textContent = s.length; el.hidden = !s.length; } } catch { /* ignore */ }
@@ -164,7 +165,7 @@
       <div class="tiles">
         ${tile("Members", s.members, `${num(s.onboarded)} finished their profile`)}
         ${tile("New this week", s.new_7d, `${num(s.new_30d)} in the last 30 days`)}
-        ${tile("Active today", s.active_24h, `${num(s.active_7d)} active this week`)}
+        ${tile("Active today", s.active_24h, `<span id="online"></span>${num(s.active_7d)} active this week`)}
         ${tile("Matches", s.matches, `${num(s.matches_7d)} this week`)}
         ${tile("Messages", s.messages, `${num(s.messages_7d)} this week`)}
         ${tile("Open reports", s.reports_open, `${num(s.reports_total)} report${s.reports_total === 1 ? "" : "s"} in total`, s.reports_open > 0)}
@@ -183,6 +184,7 @@
         <div class="card"><h2>Looking for</h2><p class="sub">Women ${num(s.women)} · Men ${num(s.men)}</p><div class="hbars">${hbarRows((s.looking_for || []).map(c => [LOOKING[c.label] || c.label, c.count]))}</div></div>
       </div>`;
     $("#rf").onclick = viewOverview;
+    rpc("admin_online").then(n => { const el = $("#online"); if (el) el.innerHTML = `<b style="color:var(--good)">● ${num(n)} online now</b><br>`; }).catch(() => {});
     $$("#metric [data-metric]").forEach(b => b.onclick = () => { state.metric = b.dataset.metric; $$("#metric button").forEach(x => x.classList.toggle("on", x === b)); drawActivity(); });
     $$("#range [data-days]").forEach(b => b.onclick = () => { state.days = +b.dataset.days; $$("#range button").forEach(x => x.classList.toggle("on", x === b)); loadActivity(); });
     loadActivity();
@@ -302,6 +304,83 @@
         refreshReportCount(); viewReports();
       } catch (e) { toast(friendly(e)); }
     });
+  }
+
+  /* ---------- insights ---------- */
+  const SHOW_ME = { everyone: "Everyone", women: "Women", men: "Men" };
+  const RELIGION = { muslim: "Muslim", christian: "Christian", other: "Other", prefer_not: "Prefer not to say", not_set: "Not set" };
+  const fmtHours = h => h == null ? "—" : h < 1 ? `${Math.round(h * 60)} min` : h < 48 ? `${h} h` : `${Math.round(h / 24)} days`;
+  const fmtMins = m => m == null ? "—" : m < 60 ? `${m} min` : `${Math.round(m / 6) / 10} h`;
+  const pct = v => v == null ? "—" : `${v}%`;
+  async function viewInsights() {
+    loading();
+    let d;
+    try { d = await rpc("admin_insights"); } catch (e) { return failed(e); }
+    const e = d.engagement || {}, p = d.profiles || {}, sf = d.safety || {}, ld = d.leaders || {};
+    const tile = (label, value, note) => `<div class="card tile"><div class="label">${label}</div><div class="num">${value}</div>${note ? `<div class="note">${note}</div>` : ""}</div>`;
+    const leaderList = (rows, unit) => rows.length ? rows.map((r, i) => `<div class="hb" style="grid-template-columns:22px 1fr auto;cursor:pointer" data-member="${r.id}">
+        <span class="muted" style="font-weight:800">${i + 1}</span><span class="person" style="min-width:0">${avatar(r, 30)}<span style="min-width:0"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.name)}</b><span>${esc(r.city || "—")} · joined ${when(r.joined)}</span></span></span>
+        <span class="v">${num(r.count)} ${r.count === 1 ? unit.replace(/s$/, "") : unit}</span></div>`).join("") : '<p class="empty" style="padding:10px">No data yet</p>';
+    main().innerHTML = `<div class="head"><div><h1>Insights</h1><p>How members use Kindred. Real members only; test and reviewer accounts are left out.</p></div><button class="btn sm" id="rf">Refresh</button></div>
+      <div class="tiles">
+        ${tile("Match rate", pct(e.match_rate), `of ${num(e.likes)} likes became a match`)}
+        ${tile("Matches that chat", pct(e.pct_matches_with_chat), "at least one message sent")}
+        ${tile("Two-way chats", pct(e.pct_two_way), "both people replied")}
+        ${tile("Messages per chat", e.avg_messages_per_chat ?? "—", "average, in chats that started")}
+        ${tile("Time to first match", fmtHours(e.median_hours_to_first_match), "median, after joining")}
+        ${tile("Reply time", fmtMins(e.median_reply_minutes), "median gap before a reply")}
+      </div>
+      <div class="grid2">
+        <div class="card"><h2>When members are active</h2><p class="sub">Messages and swipes in the last 30 days, by day and hour (Freetown time)</p><div id="heat"></div></div>
+        <div class="card"><h2>Are new members staying?</h2><p class="sub">Members who joined each week, and how many were active in the last 7 days</p><div id="ret"></div></div>
+      </div>
+      <div class="grid3" style="margin-bottom:16px">
+        <div class="card"><h2>Profile quality</h2><p class="sub">Finished profiles only</p>
+          <div class="hbars">${[["3+ photos", p.pct_3_photos], ["Wrote a bio", p.pct_bio]].map(([k, v]) => `<div class="hb" title="${k}: ${pct(v)} of profiles"><span class="k">${k}</span><span class="track"><span class="fill" style="width:${v || 0}%"></span></span><span class="v">${pct(v == null ? null : Math.round(v))}</span></div>`).join("")}</div>
+          <p class="sub" style="margin:12px 0 4px">Average photos per profile: <b style="color:var(--text)">${p.avg_photos ?? "—"}</b></p>
+          <h2 style="margin-top:16px">Who they want to see</h2><div class="hbars" style="margin-top:8px">${hbarRows((p.show_me || []).map(x => [SHOW_ME[x.label] || x.label, x.count]))}</div>
+          <h2 style="margin-top:16px">Religion</h2><div class="hbars" style="margin-top:8px">${hbarRows((p.religion || []).map(x => [RELIGION[x.label] || x.label, x.count]))}</div></div>
+        <div class="card"><h2>Top interests</h2><p class="sub">Most chosen on profiles</p><div class="hbars">${hbarRows((p.interests || []).map(x => [x.label, x.count]))}</div></div>
+        <div class="card"><h2>Languages spoken</h2><p class="sub">Most listed on profiles</p><div class="hbars">${hbarRows((p.languages || []).map(x => [x.label, x.count]))}</div></div>
+      </div>
+      <div class="grid2">
+        <div class="card"><h2>Safety</h2><p class="sub">Reports, scam alerts and blocks</p>
+          <div class="counts" style="margin:6px 0 14px"><div><b>${num(sf.open_reports)}</b><span>Open reports</span></div><div><b>${num(sf.open_flags)}</b><span>Open scam alerts</span></div><div><b>${num(sf.blocks_7d)}</b><span>Blocks this week</span></div><div><b>${num(sf.suspended_now)}</b><span>Suspended now</span></div></div>
+          <p class="sub" style="margin:0 0 12px">Median time to handle a report: <b style="color:var(--text)">${fmtHours(sf.median_hours_to_resolve)}</b> · Suspensions in the last 30 days: <b style="color:var(--text)">${num(sf.suspensions_30d)}</b> · Blocks all time: <b style="color:var(--text)">${num(sf.blocks)}</b></p>
+          <h2 style="font-size:14px">Reports by reason</h2><div class="hbars" style="margin-top:8px">${hbarRows((sf.reports_by_reason || []).map(x => [x.label, x.count]))}</div>
+          <h2 style="font-size:14px;margin-top:16px">Scam alerts by type</h2><div class="hbars" style="margin-top:8px">${hbarRows((sf.flags_by_category || []).map(x => [CATEGORY[x.label]?.[0] || x.label, x.count]))}</div></div>
+        <div class="card"><h2>Most liked profiles</h2><p class="sub">Very popular brand-new profiles can be fake. Worth a look.</p><div class="hbars">${leaderList(ld.most_liked || [], "likes")}</div>
+          <h2 style="margin-top:18px">Most active chatters</h2><p class="sub">Messages sent</p><div class="hbars">${leaderList(ld.most_messages || [], "sent")}</div></div>
+      </div>`;
+    $("#rf").onclick = viewInsights;
+    $$("[data-member]", main()).forEach(a => a.onclick = () => openMember(a.dataset.member));
+    heatmap($("#heat"), d.heatmap || []);
+    retention($("#ret"), d.retention || []);
+  }
+  function heatmap(el, cells) {
+    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const grid = Array.from({ length: 7 }, () => Array(24).fill(0));
+    cells.forEach(c => { grid[c.dow - 1][c.hour] = c.count; });
+    const max = Math.max(0, ...cells.map(c => c.count));
+    if (!max) { el.innerHTML = '<p class="empty">No activity in the last 30 days yet.</p>'; return; }
+    const steps = [0, .18, .38, .6, .8, 1];
+    const shade = v => { if (!v) return "var(--surface-2)"; const k = Math.min(5, Math.max(1, Math.ceil((5 * v) / max))); return `color-mix(in srgb, var(--bar) ${Math.round(steps[k] * 100)}%, var(--surface))`; };
+    const hourLabel = h => h === 0 ? "12am" : h < 12 ? `${h}am` : h === 12 ? "12pm" : `${h - 12}pm`;
+    el.innerHTML = `<div style="overflow-x:auto"><div style="display:grid;grid-template-columns:34px repeat(24,minmax(14px,1fr));gap:2px;min-width:420px;font-size:11px">
+        <span></span>${Array.from({ length: 24 }, (_, h) => `<span class="muted" style="text-align:center">${h % 6 === 0 ? hourLabel(h) : ""}</span>`).join("")}
+        ${grid.map((row, i) => `<span class="muted" style="align-self:center">${days[i]}</span>${row.map((v, h) => `<span title="${days[i]} ${hourLabel(h)}–${hourLabel((h + 1) % 24)}: ${v} action${v === 1 ? "" : "s"}" style="aspect-ratio:1;border-radius:3px;background:${shade(v)}"></span>`).join("")}`).join("")}
+      </div></div>
+      <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;margin-top:10px;font-size:12px" class="muted">Fewer ${steps.slice(1).map((_, k) => `<span style="width:14px;height:14px;border-radius:3px;background:${shade(Math.ceil(((k + 1) * max) / 5))}"></span>`).join("")} More · busiest hour: ${num(max)}</div>
+      <details class="tv"><summary>Show as table</summary><table><thead><tr><th>Day</th><th>Busiest hour</th><th>Actions that day</th></tr></thead><tbody>
+        ${grid.map((row, i) => { const t = row.reduce((a, b) => a + b, 0), bh = row.indexOf(Math.max(...row)); return `<tr><td>${days[i]}</td><td>${t ? hourLabel(bh) : "—"}</td><td>${t}</td></tr>`; }).join("")}</tbody></table></details>`;
+  }
+  function retention(el, rows) {
+    if (!rows.length) { el.innerHTML = '<p class="empty">No sign-ups in the last 8 weeks yet.</p>'; return; }
+    const fmt = d => new Date(d + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+    el.innerHTML = `<table><thead><tr><th>Week of</th><th>Joined</th><th>Still active</th><th style="width:40%"></th></tr></thead><tbody>
+      ${rows.map(r => { const p = r.joined ? Math.round((100 * r.active) / r.joined) : 0; return `<tr><td>${fmt(r.week)}</td><td>${num(r.joined)}</td><td><b>${p}%</b> <span class="muted">(${num(r.active)})</span></td>
+        <td><span class="track" style="display:block;height:10px;border-radius:4px;background:var(--surface-2);overflow:hidden"><span style="display:block;height:100%;width:${p}%;background:var(--bar);border-radius:0 4px 4px 0"></span></span></td></tr>`; }).join("")}
+      </tbody></table><p class="sub" style="margin:10px 0 0">"Still active" means they opened Kindred in the last 7 days.</p>`;
   }
 
   /* ---------- CSV export ---------- */

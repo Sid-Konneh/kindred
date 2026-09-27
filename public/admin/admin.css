@@ -173,3 +173,6 @@ dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18
 #toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-weight: 600; font-size: 14px; opacity: 0; transition: .2s; z-index: 40; pointer-events: none; max-width: calc(100% - 32px); }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* grid children must be allowed to shrink, so wide content (the heatmap) scrolls inside its card */
+.grid2 > *, .grid3 > *, .tiles > * { min-width: 0; }

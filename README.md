@@ -23,7 +23,7 @@ Open the address it prints. With `public/config.js` left empty the app runs in *
 
 ### 1. Supabase
 1. Create a project at supabase.com. Pick the region closest to West Africa, e.g. `eu-west-2` (London) or `eu-central-1`.
-2. SQL Editor → run the files in `supabase/migrations/` in order (001 → 008).
+2. SQL Editor → run the files in `supabase/migrations/` in order (001 → 009).
 3. Project Settings → API: copy the URL and **publishable** key into `public/config.js`.
 4. Authentication → URL Configuration: set Site URL to your Netlify URL, and add it under Redirect URLs.
 5. Authentication → Providers → Email: keep **Confirm email** on and set the minimum password length to 8.
@@ -78,6 +78,7 @@ The PWA installs from the browser today: Android shows "Install app", and on iOS
 - **Moderators:** overview stats, the reports queue (with the chat evidence captured when the report was sent), searching members, suspending and unsuspending, and removing photos.
 - **Super admins:** everything moderators can do, plus adding and removing team members, deleting accounts and marking test accounts.
 - **Scam alerts:** messages that mention money (Orange Money, Afrimoney, airtime, Leones) or move to WhatsApp or a phone number are flagged automatically.
+- **Insights:** match rate, conversation and reply stats, retention by sign-up week, an activity heatmap, profile quality, interests and languages, safety stats and leaderboards.
 - **Photo review**, daily activity charts (30 or 90 days), a sign-up funnel, private notes on members, and CSV export of members and reports (super admins only).
 - Every action is written to the activity log.
 - **First super admin:** they sign up in the app first, then you run this once in the Supabase SQL editor:
