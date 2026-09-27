@@ -465,3 +465,5 @@ button.chip { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+.linkbtn { border: 0; background: none; color: var(--brand); font-weight: 800; text-decoration: underline; cursor: pointer; padding: 0; font-size: inherit; }

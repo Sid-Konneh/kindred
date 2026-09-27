@@ -23,7 +23,7 @@ Open the address it prints. With `public/config.js` left empty the app runs in *
 
 ### 1. Supabase
 1. Create a project at supabase.com. Pick the region closest to West Africa, e.g. `eu-west-2` (London) or `eu-central-1`.
-2. SQL Editor → run the files in `supabase/migrations/` in order (001 → 009).
+2. SQL Editor → run the files in `supabase/migrations/` in order (001 → 010).
 3. Project Settings → API: copy the URL and **publishable** key into `public/config.js`.
 4. Authentication → URL Configuration: set Site URL to your Netlify URL, and add it under Redirect URLs.
 5. Authentication → Providers → Email: keep **Confirm email** on and set the minimum password length to 8.

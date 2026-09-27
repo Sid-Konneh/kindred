@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
 import '../theme.dart';
+import '../email_check.dart';
 import '../widgets.dart';
 import 'sheets.dart';
 
@@ -259,13 +260,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
     if (d != null) setState(() => _dob = d);
   }
 
+  String? _fix; // suggested corrected email, e.g. gmial.com -> gmail.com
+
   Future<void> _submit() async {
     final name = _name.text.trim(), email = _email.text.trim().toLowerCase();
     String? e;
+    _fix = null;
     if (name.isEmpty) {
       e = 'Please enter your first name.';
-    } else if (!_emailRe.hasMatch(email)) {
-      e = 'Please enter a valid email address.';
+    } else if (!validName(name)) {
+      e = 'Please use your real first name, using letters only.';
+    } else if (!validEmail(email)) {
+      e = 'Please enter a valid email address, like name@gmail.com.';
     } else if (_dob == null) {
       e = 'Please enter your date of birth.';
     } else if (_dob!.isAfter(_maxDob)) {
@@ -280,6 +286,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
       _err = null;
       _busy = true;
     });
+    final problem = await emailProblem(email);
+    if (!mounted) return;
+    if (problem != null) {
+      return setState(() {
+        _busy = false;
+        _err = problem.message;
+        _fix = problem.fix;
+      });
+    }
     try {
       final dob = '${_dob!.year}-${_dob!.month.toString().padLeft(2, '0')}-${_dob!.day.toString().padLeft(2, '0')}';
       final needsVerify = await Api.signUp(name: name, email: email, password: _pw.text, birthdate: dob);
@@ -332,6 +347,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
         ]),
       ),
       FormError(_err),
+      if (_fix != null)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            onPressed: () => setState(() {
+              _email.text = _fix!;
+              _fix = null;
+              _err = null;
+            }),
+            child: Text('Use $_fix', style: const TextStyle(color: K.brand, fontWeight: FontWeight.w800)),
+          ),
+        ),
       const SizedBox(height: 16),
       GradButton('Create account', busy: _busy, onPressed: _submit),
       const SizedBox(height: 18),

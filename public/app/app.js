@@ -62,7 +62,47 @@
   const recent = iso => iso && Date.now() - new Date(iso).getTime() < 3 * 3600e3;
   const ageOf = bd => { const b = new Date(bd + "T00:00:00"), n = new Date(); let a = n.getFullYear() - b.getFullYear(); const m = n.getMonth() - b.getMonth(); if (m < 0 || (m === 0 && n.getDate() < b.getDate())) a--; return a; };
   const maxDob = () => { const d = new Date(); d.setFullYear(d.getFullYear() - 18); return d.toISOString().slice(0, 10); };
-  const validEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e);
+  const validEmail = e => /^[a-z0-9._%+'-]+@[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/i.test(e) && !/\.\./.test(e) && !/^\.|\.@/.test(e) && e.length <= 254;
+  // Common misspellings of big email providers -> the correct domain
+  const DOMAIN_TYPOS = { "gmial.com": "gmail.com", "gmai.com": "gmail.com", "gmal.com": "gmail.com", "gamil.com": "gmail.com", "gmail.co": "gmail.com", "gmail.con": "gmail.com",
+    "gmail.cm": "gmail.com", "gmail.om": "gmail.com", "gmaill.com": "gmail.com", "gnail.com": "gmail.com", "gmail.comm": "gmail.com", "gmsil.com": "gmail.com", "gmali.com": "gmail.com", "gmail.cim": "gmail.com",
+    "yaho.com": "yahoo.com", "yahoo.con": "yahoo.com", "yahho.com": "yahoo.com", "yahoo.co": "yahoo.com", "yhoo.com": "yahoo.com", "hotmial.com": "hotmail.com", "hotmal.com": "hotmail.com",
+    "hotmail.con": "hotmail.com", "hotmai.com": "hotmail.com", "hotmil.com": "hotmail.com", "outlok.com": "outlook.com", "outlook.con": "outlook.com", "outllok.com": "outlook.com",
+    "iclod.com": "icloud.com", "icloud.con": "icloud.com", "iclould.com": "icloud.com" };
+  const DISPOSABLE = new Set(["mailinator.com", "yopmail.com", "10minutemail.com", "guerrillamail.com", "guerrillamail.net", "sharklasers.com", "tempmail.com", "temp-mail.org", "tempmail.net", "tempmailo.com",
+    "throwawaymail.com", "trashmail.com", "getnada.com", "nada.email", "dispostable.com", "maildrop.cc", "fakeinbox.com", "mintemail.com", "emailondeck.com", "mohmal.com", "burnermail.io",
+    "mailnesia.com", "mytemp.email", "tempr.email", "discard.email", "spamgourmet.com", "getairmail.com", "moakt.com", "tmail.ws", "emailfake.com", "1secmail.com", "guerrillamailblock.com",
+    "mailcatch.com", "inboxkitten.com", "tempinbox.com", "dropmail.me", "fakemail.net", "byom.de", "33mail.com"]);
+  const KNOWN_MAIL = new Set(["gmail.com", "googlemail.com", "yahoo.com", "ymail.com", "outlook.com", "hotmail.com", "live.com", "msn.com", "icloud.com", "me.com", "aol.com", "proton.me", "protonmail.com", "zoho.com", "yandex.com", "gmx.com"]);
+  const mxCache = new Map();
+  // Asks public DNS whether the domain can receive email. Never blocks sign-up if the check itself fails.
+  async function domainAcceptsMail(domain) {
+    if (KNOWN_MAIL.has(domain)) return true;
+    if (mxCache.has(domain)) return mxCache.get(domain);
+    const q = async type => {
+      const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 4000);
+      try { const r = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=${type}`, { signal: ctl.signal }); return await r.json(); }
+      finally { clearTimeout(t); }
+    };
+    let ok = true;
+    try {
+      const mx = await q("MX");
+      if (mx.Status === 3) ok = false; // the domain does not exist
+      else if (!(mx.Answer || []).some(a => a.type === 15)) { const a = await q("A"); ok = (a.Answer || []).length > 0; }
+    } catch { ok = true; }
+    mxCache.set(domain, ok);
+    return ok;
+  }
+  // null when the email looks fine, otherwise { msg, fix } where fix is a suggested corrected address
+  async function emailProblem(email) {
+    if (!validEmail(email)) return { msg: "Please enter a valid email address, like name@gmail.com." };
+    const [user, domain] = email.split("@");
+    if (DOMAIN_TYPOS[domain]) return { msg: `Did you mean ${user}@${DOMAIN_TYPOS[domain]}?`, fix: `${user}@${DOMAIN_TYPOS[domain]}` };
+    if (DISPOSABLE.has(domain)) return { msg: "Temporary email addresses can't be used on Kindred. Please use your own email." };
+    if (!(await domainAcceptsMail(domain))) return { msg: `We can't find an email service at ${domain}. Please check your email address.` };
+    return null;
+  }
+  const validName = n => /^\p{L}[\p{L} '.-]{1,39}$/u.test(n);
   const isGmail = e => /@(gmail|googlemail)\.com$/i.test(e || "");
 
   function fmtWhen(iso) {
@@ -93,6 +133,9 @@
   function friendly(e) {
     const m = String(e?.message || e || "");
     if (/invalid login credentials/i.test(m)) return "Email or password is incorrect.";
+    if (/temporary email addresses are not allowed/i.test(m)) return "Temporary email addresses can't be used on Kindred. Please use your own email.";
+    if (/please use a valid email|database error saving new user/i.test(m)) return "We couldn't create an account with that email. Please check it and try again.";
+    if (/real first name/i.test(m)) return "Please use your real first name, using letters only.";
     if (/user is banned|been suspended/i.test(m)) return "This account has been suspended. If you think this is a mistake, email kindred.salone@gmail.com.";
     if (/email not confirmed/i.test(m)) return "Please confirm your email first. Check your inbox (and spam folder).";
     if (/already registered|already exists/i.test(m)) return "An account with this email already exists. Try signing in instead.";
@@ -800,6 +843,7 @@
       const t = setInterval(() => { b.textContent = `Resend in ${--n}s`; if (n <= 0) { clearInterval(t); delete b.dataset.cool; b.disabled = false; b.textContent = "Resend email"; } }, 1000);
     },
     "demo-reset": () => go("reset"),
+    "use-email": b => { const f = b.closest("form"); f.elements.email.value = b.dataset.email; formError(f, ""); f.elements.email.focus(); },
     signout: async () => { await api.signOut(); },
     step: async b => {
       const dir = +b.dataset.dir;
@@ -884,7 +928,16 @@
       const d = Object.fromEntries(new FormData(f));
       const email = (d.email || "").trim().toLowerCase(), name = (d.name || "").trim();
       if (!name) return formError(f, "Please enter your first name.", "name");
-      if (!validEmail(email)) return formError(f, "Please enter a valid email address.", "email");
+      if (!validName(name)) return formError(f, "Please use your real first name, using letters only.", "name");
+      formError(f, "");
+      busy(btn, true, "Checking…");
+      const problem = await emailProblem(email);
+      busy(btn, false);
+      if (problem) {
+        formError(f, problem.msg, "email");
+        if (problem.fix) $(".form-error", f).insertAdjacentHTML("beforeend", ` <button type="button" class="linkbtn" data-act="use-email" data-email="${esc(problem.fix)}">Use ${esc(problem.fix)}</button>`);
+        return;
+      }
       if (!d.birthdate) return formError(f, "Please enter your date of birth.", "birthdate");
       if (ageOf(d.birthdate) < 18) return formError(f, "You must be 18 or older to use Kindred.", "birthdate");
       if (strength(d.password) < 2) return formError(f, "Use at least 8 characters with letters and numbers.", "password");

@@ -24,6 +24,9 @@ String friendly(Object e) {
   final m = e is AuthException ? e.message : e is PostgrestException ? e.message : e is StorageException ? e.message : '$e';
   final s = m.toLowerCase();
   if (s.contains('invalid login credentials')) return 'Email or password is incorrect.';
+  if (s.contains('temporary email addresses are not allowed')) return "Temporary email addresses can't be used on Kindred. Please use your own email.";
+  if (s.contains('please use a valid email') || s.contains('database error saving new user')) return "We couldn't create an account with that email. Please check it and try again.";
+  if (s.contains('real first name')) return 'Please use your real first name, using letters only.';
   if (s.contains('user is banned') || s.contains('been suspended')) return 'This account has been suspended. If you think this is a mistake, email kindred.salone@gmail.com.';
   if (s.contains('email not confirmed')) return 'Please confirm your email first. Check your inbox (and spam folder).';
   if (s.contains('already registered') || s.contains('already exists')) return 'An account with this email already exists. Try signing in instead.';
