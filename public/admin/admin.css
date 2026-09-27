@@ -51,6 +51,7 @@ label.f input:focus, label.f select:focus, label.f textarea:focus { border-color
 .nav .count { margin-left: auto; background: var(--bad); color: #fff; font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 99px; }
 .me { margin-top: auto; padding: 12px; border-top: 1px solid var(--line); font-size: 13px; }
 .me b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.me > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .role { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; border-radius: 99px; background: var(--surface-2); color: var(--muted); }
 .role.super_admin { background: color-mix(in srgb, var(--brand) 14%, transparent); color: var(--brand); }
 main { padding: 26px 30px 60px; min-width: 0; }
