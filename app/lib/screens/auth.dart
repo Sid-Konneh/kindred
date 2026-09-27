@@ -521,8 +521,8 @@ class _InboxScreenState extends State<InboxScreen> {
           const SizedBox(height: 10),
           Text(
             reset
-                ? 'Open the link, choose a new password on the Kindred website, then come back here and sign in with it.'
-                : 'Tap the link in the email to confirm your account, then come back here and sign in.',
+                ? 'Open the email on this phone and tap the link. Kindred will open so you can choose a new password.'
+                : 'Open the email on this phone and tap the link. Kindred will open and sign you in.',
             textAlign: TextAlign.center,
             style: TextStyle(color: p.muted, fontSize: 14, height: 1.5),
           ),
@@ -540,4 +540,49 @@ class _InboxScreenState extends State<InboxScreen> {
       ),
     );
   }
+}
+
+/// Shown when a password-reset email link opens the app.
+class NewPasswordScreen extends StatefulWidget {
+  const NewPasswordScreen({super.key});
+  @override
+  State<NewPasswordScreen> createState() => _NewPasswordScreenState();
+}
+
+class _NewPasswordScreenState extends State<NewPasswordScreen> {
+  final _pw = TextEditingController(), _confirm = TextEditingController();
+  bool _busy = false;
+  String? _err;
+
+  Future<void> _save() async {
+    if (passwordStrength(_pw.text) < 2) return setState(() => _err = 'Use at least 8 characters with letters and numbers.');
+    if (_pw.text != _confirm.text) return setState(() => _err = "The passwords don't match.");
+    setState(() {
+      _err = null;
+      _busy = true;
+    });
+    try {
+      await Api.updatePassword(_pw.text);
+      if (!mounted) return;
+      toast(context, 'Password updated');
+      Navigator.pop(context);
+    } catch (e) {
+      if (mounted) setState(() => _err = friendly(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => _AuthScaffold(
+        title: 'Choose a new password',
+        subtitle: "Make it something you don't use anywhere else.",
+        children: [
+          LabeledField('New password', child: PasswordField(controller: _pw, showStrength: true)),
+          LabeledField('Confirm new password', child: PasswordField(controller: _confirm)),
+          FormError(_err),
+          const SizedBox(height: 18),
+          GradButton('Save new password', busy: _busy, onPressed: _save),
+        ],
+      );
 }

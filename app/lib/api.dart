@@ -70,14 +70,14 @@ class Api {
 
   /// Returns true when the account still needs its email confirmed.
   static Future<bool> signUp({required String name, required String email, required String password, required String birthdate}) async {
-    final r = await sb.auth.signUp(email: email, password: password, emailRedirectTo: webUrl, data: {'name': name, 'birthdate': birthdate});
+    final r = await sb.auth.signUp(email: email, password: password, emailRedirectTo: appRedirect, data: {'name': name, 'birthdate': birthdate});
     if (r.user != null && (r.user!.identities?.isEmpty ?? false)) throw const AuthException('User already registered');
     return r.session == null;
   }
 
   static Future<void> signIn(String email, String password) => sb.auth.signInWithPassword(email: email, password: password);
-  static Future<void> resendSignup(String email) => sb.auth.resend(type: OtpType.signup, email: email, emailRedirectTo: webUrl);
-  static Future<void> sendReset(String email) => sb.auth.resetPasswordForEmail(email, redirectTo: '$webUrl/#/reset');
+  static Future<void> resendSignup(String email) => sb.auth.resend(type: OtpType.signup, email: email, emailRedirectTo: appRedirect);
+  static Future<void> sendReset(String email) => sb.auth.resetPasswordForEmail(email, redirectTo: appRedirect);
   static Future<void> updatePassword(String pw) => sb.auth.updateUser(UserAttributes(password: pw));
   static Future<void> signOut() async {
     await Cache.clear();

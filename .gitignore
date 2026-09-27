@@ -7,3 +7,8 @@ Thumbs.db
 
 # built Android app (published to Netlify, too big for git)
 public/download/
+
+# Google Play service-account key: a password, never commit
+play/service-account.json
+play/node_modules/
+play/review-accounts.txt

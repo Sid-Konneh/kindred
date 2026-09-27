@@ -219,7 +219,7 @@
         <p class="muted">Meet genuine people across Sierra Leone — from Freetown to Kenema — who share your values.</p>
         <a class="btn primary" href="#/signup">Create account</a>
         <a class="btn ghost" href="#/signin">I already have an account</a>
-        ${/iphone|ipad|ipod/i.test(navigator.userAgent) ? "" : `<a class="btn soft" href="download/kindred.apk" download>${I.phone}Get the Android app <span class="muted sm" style="font-weight:600">· 37 MB</span></a>`}
+        ${/iphone|ipad|ipod/i.test(navigator.userAgent) ? "" : `<a class="btn soft" href="../download/kindred.apk" download>${I.phone}Get the Android app <span class="muted sm" style="font-weight:600">· 37 MB</span></a>`}
         <p class="fine">Kindred is for adults 18+. By continuing you agree to our <a href="#" data-act="guidelines">Community Guidelines</a>.</p>
       </div>
     </div>`);
@@ -649,7 +649,7 @@
     const box = $("#msgs"); if (!box || !chatMatch) return;
     const o = chatMatch.other;
     const typing = $(".typing", box) ? `<div class="typing"><i></i><i></i><i></i></div>` : "";
-    let html = `<div class="chat-intro">${avatar(o, 84)}<p>You matched with <b style="color:var(--text)">${esc(o.name)}</b> ${fmtWhen(chatMatch.created_at) ? "· " + esc(fmtDay(chatMatch.created_at).toLowerCase()) : ""}</p>
+    let html = `<div class="chat-intro">${avatar(o, 84)}<p>You matched with <b style="color:var(--text)">${esc(o.name)}</b> ${chatMatch.created_at ? "· " + esc(/^(Today|Yesterday)$/.test(fmtDay(chatMatch.created_at)) ? fmtDay(chatMatch.created_at).toLowerCase() : "on " + fmtDay(chatMatch.created_at)) : ""}</p>
       <div class="safety-note">${I.shield}<span><b style="color:var(--text)">Stay safe.</b> Keep chats on Kindred until you trust someone. Never send money or Orange Money / Afrimoney to someone you haven't met.</span></div></div>`;
     let lastDay = "";
     const lastMine = [...chatMsgs].reverse().find(x => x.sender === state.uid);

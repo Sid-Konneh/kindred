@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 
 import '../api.dart';
@@ -458,7 +459,7 @@ class _MatchOverlay extends StatelessWidget {
               width: double.infinity,
               height: 56,
               child: FilledButton.icon(
-                style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: K.brand, shape: const StadiumBorder(), textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: K.brand, shape: const StadiumBorder(), textStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 16)),
                 icon: const Icon(Icons.chat_bubble_outline_rounded),
                 label: Text('Say hello to ${p.name}'),
                 onPressed: () {
@@ -473,7 +474,7 @@ class _MatchOverlay extends StatelessWidget {
               width: double.infinity,
               height: 56,
               child: OutlinedButton(
-                style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Colors.white70, width: 1.5), shape: const StadiumBorder(), textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Colors.white70, width: 1.5), shape: const StadiumBorder(), textStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 16)),
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Keep swiping'),
               ),

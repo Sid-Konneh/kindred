@@ -8,6 +8,12 @@ import 'sheets.dart';
 
 const _icebreakers = ["What's your favourite spot in Salone?", 'Jollof or cassava leaves? 😄', 'What does a perfect weekend look like for you?', 'What are you looking for on Kindred?'];
 
+/// "today" / "yesterday" read naturally in a sentence; real dates keep their capitals.
+String _dayPhrase(DateTime d) {
+  final s = fmtDay(d);
+  return s == 'Today' || s == 'Yesterday' ? s.toLowerCase() : 'on $s';
+}
+
 class MatchesTab extends StatelessWidget {
   const MatchesTab({super.key});
 
@@ -406,7 +412,7 @@ class _ChatScreenState extends State<ChatScreen> {
           Text.rich(
             TextSpan(text: 'You matched with ', children: [
               TextSpan(text: m.other.name, style: TextStyle(color: p.text, fontWeight: FontWeight.w700)),
-              TextSpan(text: ' · ${fmtDay(m.createdAt).toLowerCase()}'),
+              TextSpan(text: ' · ${_dayPhrase(m.createdAt)}'),
             ]),
             style: TextStyle(color: p.muted, fontSize: 14),
           ),

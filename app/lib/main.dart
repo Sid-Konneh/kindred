@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'api.dart';
@@ -56,13 +57,31 @@ class _RootState extends State<Root> {
 
   Future<void> _boot() async {
     final minSplash = Future.delayed(const Duration(milliseconds: 1900));
+    // Load the brand fonts while the splash shows, so no screen appears in a fallback font.
+    // Give up after 5 s on a poor connection; they are cached on the phone after the first load.
+    final fonts = Future.any([
+      GoogleFonts.pendingFonts([
+        GoogleFonts.fraunces(fontWeight: FontWeight.w600),
+        GoogleFonts.fraunces(fontWeight: FontWeight.w700, fontStyle: FontStyle.italic),
+        GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w400),
+        GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
+        GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
+        GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800),
+      ]),
+      Future.delayed(const Duration(seconds: 5)),
+    ]).catchError((_) => null);
     await app.load(sb.auth.currentSession);
+    await fonts;
     _sub = sb.auth.onAuthStateChange.listen((s) async {
       final e = s.event;
       if (e == AuthChangeEvent.signedOut) {
         await app.load(null);
       } else if (e == AuthChangeEvent.signedIn && s.session?.user.id != app.session?.user.id) {
         await app.load(s.session);
+      } else if (e == AuthChangeEvent.passwordRecovery) {
+        // A reset-password email link opened the app: sign in, then ask for the new password.
+        await app.load(s.session);
+        navKey.currentState?.push(MaterialPageRoute(builder: (_) => const NewPasswordScreen()));
       } else if (e == AuthChangeEvent.tokenRefreshed) {
         app.session = s.session;
       }

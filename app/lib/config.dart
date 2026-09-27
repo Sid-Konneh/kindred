@@ -3,6 +3,8 @@
 const supabaseUrl = 'https://febcajqqmswcfzsawxmy.supabase.co';
 const supabaseKey = 'sb_publishable_v1BYOuEAsDeRFw0xO29J7w_f-tmLRRv';
 
-/// Email links (confirm account, reset password) open the website, which handles them;
-/// the person then signs in here with the same email and password.
 const webUrl = 'https://kindred-sl.netlify.app';
+
+/// Email links (confirm account, reset password) open the app through this link on the phone.
+/// It must be listed in Supabase → Authentication → URL Configuration → Redirect URLs.
+const appRedirect = 'sl.kindred.app://login-callback/';

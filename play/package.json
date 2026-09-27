@@ -1,0 +1,8 @@
+{
+  "name": "kindred-play",
+  "private": true,
+  "description": "Uploads the Kindred store listing and app bundle to Google Play",
+  "dependencies": {
+    "googleapis": "^182.0.0"
+  }
+}

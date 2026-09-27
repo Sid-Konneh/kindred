@@ -12,11 +12,11 @@
 
 # The service worker and config must never be served stale, or updates can't reach phones.
 [[headers]]
-  for = "/sw.js"
+  for = "/app/sw.js"
   [headers.values]
     Cache-Control = "no-cache"
 [[headers]]
-  for = "/config.js"
+  for = "/app/config.js"
   [headers.values]
     Cache-Control = "no-cache"
 [[headers]]
@@ -28,3 +28,7 @@
   [headers.values]
     Content-Type = "application/vnd.android.package-archive"
     Content-Disposition = "attachment; filename=Kindred.apk"
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"

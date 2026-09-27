@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'models.dart';
 import 'theme.dart';
@@ -243,7 +244,7 @@ class GhostButton extends StatelessWidget {
           foregroundColor: color ?? p.text,
           side: BorderSide(color: filled ? Colors.transparent : p.line, width: 1.5),
           shape: const StadiumBorder(),
-          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+          textStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 16),
         ),
         child: busy
             ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5))
