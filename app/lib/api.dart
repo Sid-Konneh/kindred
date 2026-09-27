@@ -150,8 +150,9 @@ class Api {
     return sb.storage.from('photos').getPublicUrl(path);
   }
 
-  static Future<List<Profile>> feed({String? city}) async {
-    final rows = await sb.rpc('discover_feed', params: {'p_limit': 20, 'p_city': (city == null || city.isEmpty) ? null : city});
+  /// New people by default; with [recycle], people you passed on, in a new random order.
+  static Future<List<Profile>> feed({String? city, bool recycle = false}) async {
+    final rows = await sb.rpc('discover_feed', params: {'p_limit': 20, 'p_city': (city == null || city.isEmpty) ? null : city, 'p_recycle': recycle});
     return (rows as List).map((r) => Profile.fromJson(Map<String, dynamic>.from(r))).toList();
   }
 

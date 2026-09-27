@@ -160,17 +160,20 @@ window.KindredDemo = function () {
     },
     async touch() { const me = db.profiles[session?.user?.id]; if (me) { me.last_active = nowIso(); save(); } },
 
-    async getFeed({ city } = {}) {
+    async getFeed({ city, recycle } = {}) {
       await wait(700);
       const me = db.profiles[uid()];
       const seen = db.swipes[me.id] || {};
-      return Object.values(db.profiles)
-        .filter(p => p.id !== me.id && p.onboarded && p.birthdate && !seen[p.id] && !blockedBetween(me.id, p.id))
+      const matched = id => db.matches.some(m => (m.user_a === me.id && m.user_b === id) || (m.user_b === me.id && m.user_a === id));
+      const list = Object.values(db.profiles)
+        .filter(p => p.id !== me.id && p.onboarded && p.birthdate && !blockedBetween(me.id, p.id) && !matched(p.id))
+        .filter(p => recycle ? seen[p.id] === "pass" : !seen[p.id])
         .filter(p => wants(me, p) && (!me.gender || wants(p, me)))
         .filter(p => { const a = ageOf(p.birthdate); return a >= me.age_min && a <= me.age_max; })
-        .filter(p => !city || p.city === city)
-        .sort((a, b) => (b._likesYou - a._likesYou) || (a.last_active < b.last_active ? 1 : -1))
-        .slice(0, 20).map(pub);
+        .filter(p => !city || p.city === city);
+      if (recycle) list.sort(() => Math.random() - .5);
+      else list.sort((a, b) => (b._likesYou - a._likesYou) || (a.last_active < b.last_active ? 1 : -1));
+      return list.slice(0, 20).map(pub);
     },
     async swipe(targetId, action) {
       await wait(120);

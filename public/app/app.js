@@ -183,7 +183,7 @@
   /* ---------- state ---------- */
   const state = {
     session: null, uid: null, me: null, recovery: false, pendingEmail: "",
-    feed: [], feedLoaded: false, feedLoading: false, matches: null, draft: null, step: 0,
+    feed: [], feedLoaded: false, feedLoading: false, recycled: false, seenRound: new Set(), matches: null, draft: null, step: 0,
   };
   let cleanup = null;
   function mount(html) {
@@ -432,14 +432,22 @@
       <div class="sk-line" style="width:40%;background:rgba(255,255,255,.45);border-radius:8px"></div>
       <div style="display:flex;gap:8px;margin-top:14px"><div style="width:70px;height:28px;border-radius:14px;background:rgba(255,255,255,.4)"></div><div style="width:90px;height:28px;border-radius:14px;background:rgba(255,255,255,.4)"></div></div></div></div>`;
   }
-  async function loadFeed(silent) {
+  // New people first. When there's nobody new, bring back people you passed on, reshuffled,
+  // so Discover never ends in a dead end. `forceRecycle` is the "Start over" button.
+  async function loadFeed(silent, forceRecycle) {
     if (state.feedLoading) return;
     state.feedLoading = true;
+    const city = pref.get("city", "");
     try {
-      const list = await api.getFeed({ city: pref.get("city", "") });
+      let list = forceRecycle ? [] : await api.getFeed({ city });
+      let recycled = false;
+      if (!list.length) { list = await api.getFeed({ city, recycle: true }); recycled = list.length > 0; }
       const have = new Set(state.feed.map(p => p.id));
-      state.feed = silent ? state.feed.concat(list.filter(p => !have.has(p.id))) : list;
+      if (!silent) state.seenRound = new Set();
+      state.feed = silent ? state.feed.concat(list.filter(p => !have.has(p.id) && !state.seenRound.has(p.id))) : list;
       state.feedLoaded = true;
+      if (recycled && !state.recycled) toast("You've seen everyone new. Here are people you passed on, reshuffled.");
+      state.recycled = recycled;
     } catch (e) { toast(friendly(e)); state.feedLoaded = true; }
     finally { state.feedLoading = false; }
     drawDeck();
@@ -481,8 +489,9 @@
         <div class="pulse">${avatar(state.me, 76)}</div>
         <h2>You've seen everyone for now</h2>
         <p class="muted">${city ? `There's no one new in ${esc(city)} right now. Try all of Sierra Leone, or widen your age range.` : "New people join Kindred every day. Check back soon, or widen your filters."}</p>
+        <button class="btn primary sm" style="width:auto" data-act="start-over">${I.refresh}Start over</button>
         <button class="btn soft sm" style="width:auto" data-act="filters">${I.sliders}Adjust filters</button>
-        <button class="btn ghost sm" style="width:auto;border:0" data-act="refresh-feed">${I.refresh}Refresh</button></div>`);
+        <button class="btn ghost sm" style="width:auto;border:0" data-act="refresh-feed">Check for new people</button></div>`);
     }
   }
 
@@ -546,6 +555,7 @@
     setStamps(card, action === "like" ? 200 : action === "pass" ? -200 : 0, action === "super" ? -200 : 0);
     if (navigator.vibrate) try { navigator.vibrate(action === "pass" ? 8 : 18); } catch { /* ignore */ }
     state.feed = state.feed.filter(q => q.id !== p.id);
+    state.seenRound.add(p.id);
     setTimeout(() => card.remove(), 460);
     drawDeck();
     try {
@@ -887,7 +897,12 @@
     "preview-self": () => sheet(profileView(state.me, "self"), "full"),
     "pv-thumb": b => { $("#pv-photo").innerHTML = `<img class="ph ok" src="${esc(b.dataset.src)}" alt="">`; $$(".pv-thumbs img").forEach(x => x.classList.toggle("on", x === b)); },
     filters: () => filtersSheet(),
-    "refresh-feed": () => { state.feedLoaded = false; deckSkeleton(); loadFeed(); },
+    "refresh-feed": () => { state.feedLoaded = false; state.recycled = false; deckSkeleton(); loadFeed(); },
+    "start-over": async () => {
+      state.feedLoaded = false; deckSkeleton();
+      await loadFeed(false, true);
+      if (!state.feed.length) toast("There's nobody to show again yet. Everyone you've seen, you liked or matched with.");
+    },
     ice: b => sendMsg(b.textContent),
     "chat-profile": () => chatMatch && sheet(profileView(chatMatch.other, "chat"), "full"),
     "chat-menu": () => {

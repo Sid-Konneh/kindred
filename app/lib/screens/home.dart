@@ -92,14 +92,30 @@ class _DiscoverTabState extends State<DiscoverTab> with TickerProviderStateMixin
     super.dispose();
   }
 
-  Future<void> _load({bool append = false}) async {
+  bool _recycled = false;
+  final Set<String> _seenRound = {}; // swiped in this round, so a refill doesn't bring them straight back
+
+  /// New people first. When there's nobody new, bring back people you passed on, reshuffled,
+  /// so Discover never ends in a dead end. [startOver] is the "Start over" button.
+  Future<void> _load({bool append = false, bool startOver = false}) async {
     if (_fetching) return;
     _fetching = true;
     if (!append) setState(() => _loading = true);
     try {
-      final list = await Api.feed(city: Cache.getPref('city', ''));
+      final city = Cache.getPref('city', '');
+      var list = startOver ? <Profile>[] : await Api.feed(city: city);
+      var recycled = false;
+      if (list.isEmpty) {
+        list = await Api.feed(city: city, recycle: true);
+        recycled = list.isNotEmpty;
+      }
+      if (!append) _seenRound.clear();
       final have = _feed.map((p) => p.id).toSet();
-      setState(() => _feed = append ? [..._feed, ...list.where((p) => !have.contains(p.id))] : list);
+      if (!mounted) return;
+      setState(() => _feed = append ? [..._feed, ...list.where((p) => !have.contains(p.id) && !_seenRound.contains(p.id))] : list);
+      if (recycled && !_recycled) toast(context, "You've seen everyone new. Here are people you passed on, reshuffled.");
+      _recycled = recycled;
+      if (startOver && list.isEmpty) toast(context, "There's nobody to show again yet. Everyone you've seen, you liked or matched with.");
     } catch (e) {
       if (mounted) toast(context, friendly(e));
     } finally {
@@ -118,6 +134,7 @@ class _DiscoverTabState extends State<DiscoverTab> with TickerProviderStateMixin
     HapticFeedback.lightImpact();
     await _fly.forward(from: 0);
     final p = _feed.removeAt(0);
+    _seenRound.add(p.id);
     setState(() {
       _drag = Offset.zero;
       _photo = 0;
@@ -230,6 +247,20 @@ class _DiscoverTabState extends State<DiscoverTab> with TickerProviderStateMixin
   Widget _empty() {
     final p = Pal.of(context);
     final city = Cache.getPref('city', '');
+    // Pull down to check for new people
+    return RefreshIndicator(
+      color: K.brand,
+      onRefresh: () => _load(),
+      child: LayoutBuilder(
+        builder: (context, box) => SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: ConstrainedBox(constraints: BoxConstraints(minHeight: box.maxHeight), child: Center(child: _emptyBody(p, city))),
+        ),
+      ),
+    );
+  }
+
+  Widget _emptyBody(Pal p, String city) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(28),
@@ -245,7 +276,9 @@ class _DiscoverTabState extends State<DiscoverTab> with TickerProviderStateMixin
             textAlign: TextAlign.center,
             style: TextStyle(color: p.muted, height: 1.5),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
+          SizedBox(width: 220, child: GradButton('Start over', icon: Icons.refresh_rounded, height: 48, onPressed: () => _load(startOver: true))),
+          const SizedBox(height: 10),
           Row(mainAxisSize: MainAxisSize.min, children: [
             FilledButton.tonalIcon(
               onPressed: () async {
@@ -255,8 +288,10 @@ class _DiscoverTabState extends State<DiscoverTab> with TickerProviderStateMixin
               label: const Text('Adjust filters'),
             ),
             const SizedBox(width: 8),
-            TextButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_rounded), label: const Text('Refresh')),
+            TextButton(onPressed: () => _load(), child: const Text('Check for new people')),
           ]),
+          const SizedBox(height: 6),
+          Text('or pull down to refresh', style: TextStyle(color: p.muted, fontSize: 12.5)),
         ]),
       ),
     );
