@@ -98,6 +98,7 @@
     if (/already registered|already exists/i.test(m)) return "An account with this email already exists. Try signing in instead.";
     if (/18 or older/i.test(m)) return "You must be 18 or older to use Kindred.";
     if (/failed to fetch|networkerror|load failed/i.test(m)) return "Can't reach Kindred right now. Check your data or Wi-Fi and try again.";
+    if (/email rate limit|over_email_send_rate_limit|error sending (confirmation|recovery)/i.test(m)) return "We couldn't send your email just now because our email service is busy. Your details weren't saved, so please try again a little later. Sorry about that!";
     if (/rate limit|security purposes|too many/i.test(m)) return "Too many attempts. Please wait a minute and try again.";
     if (/password should be|weak password/i.test(m)) return "Please choose a stronger password (8+ characters, letters and numbers).";
     if (/same password|different from the old/i.test(m)) return "Your new password must be different from the old one.";

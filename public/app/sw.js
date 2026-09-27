@@ -3,7 +3,7 @@
    - Pages: network first with a 3s timeout, so slow 3G still opens the app from cache.
    - Profile photos: cache first (they never change once uploaded), capped at 300 files.
    - Supabase API, auth and realtime: never cached; that data is private and must be fresh. */
-const VERSION = "kindred-app-v4";
+const VERSION = "kindred-app-v5";
 const SHELL = `${VERSION}-shell`, STATIC = `${VERSION}-static`, IMAGES = `${VERSION}-img`;
 const SHELL_FILES = [
   "./", "index.html", "styles.css", "app.js", "backend-demo.js", "backend-live.js", "config.js",

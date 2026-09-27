@@ -31,6 +31,9 @@ String friendly(Object e) {
   if (s.contains('socketexception') || s.contains('failed host lookup') || s.contains('network') || s.contains('clientexception')) {
     return "Can't reach Kindred right now. Check your data or Wi-Fi and try again.";
   }
+  if (s.contains('email rate limit') || s.contains('over_email_send_rate_limit') || s.contains('error sending')) {
+    return "We couldn't send your email just now because our email service is busy. Your details weren't saved, so please try again a little later. Sorry about that!";
+  }
   if (s.contains('rate limit') || s.contains('security purposes') || s.contains('too many')) return 'Too many attempts. Please wait a minute and try again.';
   if (s.contains('password should be') || s.contains('weak password')) return 'Please choose a stronger password (8+ characters, letters and numbers).';
   if (s.contains('different from the old')) return 'Your new password must be different from the old one.';
