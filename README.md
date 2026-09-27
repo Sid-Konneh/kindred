@@ -4,7 +4,7 @@ A dating app for Sierra Leone. It works in any phone browser and can be installe
 
 ## Features
 
-- **Accounts:** sign up with email, sign in, forgot/reset password, email confirmation, and Continue with Google. Everyone must be 18+, which is enforced in the database.
+- **Accounts:** sign up with email, sign in, forgot/reset password and email confirmation. Everyone must be 18+, which is enforced in the database.
 - **Onboarding:** 4 steps covering gender and who you want to see, photos (compressed on the phone before upload to save data), city, what you're looking for, bio, interests and languages.
 - **Discover:** a swipe deck (drag, or use the buttons or arrow keys) with like, pass and super like. You can tap through photos and open a full profile. Filters cover age range, city and who you want to see.
 - **Matches and chat:** "It's a match!" screen, new-matches row, conversations with unread badges, realtime messages, read receipts, icebreakers and a safety notice.
@@ -42,18 +42,15 @@ Supabase's built-in email sender is for testing only (a few emails per hour). To
 
 **Limits:** a personal Gmail account can send roughly 500 emails a day. Messages sent this way can land in spam, and your personal address is exposed as the sender. For launch, use Google Workspace on your own domain (e.g. `hello@kindred.sl`), or a transactional provider such as Resend or Brevo, with SPF/DKIM set up.
 
-### 3. Continue with Google
-1. In Google Cloud Console, create an OAuth client (Web application).
-2. Authorised redirect URI: `https://<your-project>.supabase.co/auth/v1/callback`.
-3. Supabase → Authentication → Providers → Google: paste the client ID and secret.
-
-Google sign-ups don't include a birthdate, so the app asks for it in onboarding and it can't be changed afterwards.
-
-### 4. Netlify
+### 3. Netlify
 ```
-netlify deploy --prod
+netlify deploy --prod --dir public
 ```
-Or connect the GitHub repo in Netlify; `netlify.toml` already publishes `public/`.
+If Netlify answers `Forbidden` to a production deploy, deploy a draft and publish it:
+```
+netlify deploy --dir public          # prints a deploy id
+netlify api restoreSiteDeploy --data '{"site_id":"0610f7a3-bff5-40f1-91fe-0c1a80c3edb3","deploy_id":"<deploy id>"}'
+```
 
 ## App stores
 The PWA installs from the browser today: Android shows "Install app", and on iOS use Share → Add to Home Screen. To publish in Google Play and the App Store, wrap `public/` with Capacitor (`npx cap add android` / `ios`). Store review for dating apps requires in-app reporting, blocking and account deletion, and Kindred already has all three. You'll also need a privacy policy URL and a moderation plan for reports.
@@ -64,3 +61,13 @@ The PWA installs from the browser today: Android shows "Install app", and on iOS
 - **Privacy policy and terms:** these are required for app stores and for handling personal data.
 - **Phone-number sign-in (SMS OTP):** many people in Sierra Leone use phone numbers more than email. Supabase supports this with an SMS provider such as Twilio or Africa's Talking. This is worth adding next.
 - **Rate limiting:** swipes and messages are not rate limited yet.
+
+## Flutter app (Android & iOS)
+`app/` is a native Flutter app on the same Supabase project, so phone and web users see and match each other.
+
+- **Download (Android):** <https://kindred-sl.netlify.app/download/kindred.apk>. On the phone, open the link, allow "Install unknown apps" for your browser when asked, then install.
+- **Build:** `cd app && flutter build apk --release --target-platform android-arm,android-arm64`, then copy `build/app/outputs/flutter-apk/app-release.apk` to `public/download/kindred.apk` and deploy the site.
+- **Play Store:** `flutter build appbundle --release` gives the `.aab` file that Google Play wants.
+- **iOS:** needs a Mac with Xcode and an Apple Developer account ($99/year): `flutter build ipa`.
+- **Signing key:** `app/android/kindred-release.jks` and `app/android/key.properties` are *not* in git. Back both up somewhere safe. If you lose them, you can never publish an update to the same Play Store listing.
+- Email links (confirm account, reset password) open the website. People then sign in in the app with the same email and password.

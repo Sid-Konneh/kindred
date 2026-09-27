@@ -131,12 +131,6 @@ window.KindredDemo = function () {
       if (!u || !u.pw || u.pw !== await hash(password)) fail("Invalid login credentials");
       setSession({ user: { id: u.id, email } }, "SIGNED_IN");
     },
-    async signInWithGoogle() {
-      await wait(600);
-      const email = "demo.user@gmail.com";
-      const id = db.users[email]?.id || await newAccount(email, null, { name: "Gmail user" });
-      setSession({ user: { id, email } }, "SIGNED_IN");
-    },
     async resendSignup() { await wait(); },
     async sendPasswordReset(email) { await wait(600); if (db.users[email]) { db.recovery = email; save(); } },
     canReset() { return !!db.recovery || !!session; },

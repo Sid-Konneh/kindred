@@ -45,9 +45,9 @@
     search: svg('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'),
     globe: svg('<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 0 20M12 2a15.3 15.3 0 0 0 0 20"/>'),
     unlink: svg('<path d="M18.84 12.25l1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71M5.17 11.75l-1.71 1.71a5 5 0 0 0 7.07 7.07l1.71-1.71M8 2v3M2 8h3M16 22v-3M22 16h-3"/>'),
+    phone: svg('<rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/>'),
     mark: svg('<path d="M10.3 6.6C8.6 4.9 5.9 5.2 4.3 7.7 2.4 11.1 4.8 15.4 12 20.2"/><path d="M13.7 6.6C15.4 4.9 18.1 5.2 19.7 7.7c1.9 3.4-.5 7.7-7.7 12.5"/><circle cx="12" cy="3.6" r="1.2" fill="currentColor" stroke="none"/>'),
   };
-  const GOOGLE = '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>';
   const MARK = (size = 40) => `<svg width="${size}" height="${size}" viewBox="0 0 100 100" fill="none" stroke="url(#kg)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><defs><linearGradient id="kg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F2436B"/><stop offset="1" stop-color="#FF8A3D"/></linearGradient></defs><path d="M43 27.5C36 20.5 24.5 21.5 18 32c-8 14 2 32 32 52"/><path d="M57 27.5C64 20.5 75.5 21.5 82 32c8 14-2 32-32 52" stroke-opacity=".82"/><circle cx="50" cy="16" r="5" fill="#F2436B" stroke="none"/></svg>`;
 
   /* ---------- helpers ---------- */
@@ -218,8 +218,8 @@
         <h1>Where Salone hearts meet</h1>
         <p class="muted">Meet genuine people across Sierra Leone — from Freetown to Kenema — who share your values.</p>
         <a class="btn primary" href="#/signup">Create account</a>
-        <button class="btn google" data-act="google">${GOOGLE}Continue with Google</button>
         <a class="btn ghost" href="#/signin">I already have an account</a>
+        ${/iphone|ipad|ipod/i.test(navigator.userAgent) ? "" : `<a class="btn soft" href="download/kindred.apk" download>${I.phone}Get the Android app <span class="muted sm" style="font-weight:600">· 37 MB</span></a>`}
         <p class="fine">Kindred is for adults 18+. By continuing you agree to our <a href="#" data-act="guidelines">Community Guidelines</a>.</p>
       </div>
     </div>`);
@@ -241,8 +241,6 @@
         <p class="form-error" role="alert"></p>
         <button class="btn primary" type="submit">Create account</button>
       </form>
-      <div class="divider"><span>or</span></div>
-      <button class="btn google" data-act="google">${GOOGLE}Continue with Google</button>
       <p class="center muted sm" style="margin-top:20px">Already have an account? <a href="#/signin">Sign in</a></p>
     </main></div>`);
 
@@ -257,8 +255,6 @@
         <p class="form-error" role="alert"></p>
         <button class="btn primary" type="submit">Sign in</button>
       </form>
-      <div class="divider"><span>or</span></div>
-      <button class="btn google" data-act="google">${GOOGLE}Continue with Google</button>
       <p class="center muted sm" style="margin-top:20px">New to Kindred? <a href="#/signup">Create an account</a></p>
     </main></div>`);
 
@@ -790,7 +786,6 @@
   const actions = {
     "close-sheet": () => closeSheet(),
     "pw-toggle": b => { const inp = b.previousElementSibling; const show = inp.type === "password"; inp.type = show ? "text" : "password"; b.innerHTML = show ? I.eyeOff : I.eye; b.setAttribute("aria-label", show ? "Hide password" : "Show password"); },
-    google: async b => { busy(b, true); try { await api.signInWithGoogle(); } catch (e) { toast(friendly(e)); busy(b, false); } },
     guidelines: (_, e) => { e.preventDefault(); sheet(tipsHtml("Community guidelines", GUIDELINES, "Kindred works because members treat each other with respect.")); },
     safety: () => sheet(tipsHtml("Dating safety tips", SAFETY, "Most people on Kindred are genuine. These habits keep it that way.")),
     resend: async b => {

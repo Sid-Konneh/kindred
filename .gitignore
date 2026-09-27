@@ -4,3 +4,6 @@ node_modules/
 .env.*
 .DS_Store
 Thumbs.db
+
+# built Android app (published to Netlify, too big for git)
+public/download/

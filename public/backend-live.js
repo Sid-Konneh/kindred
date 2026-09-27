@@ -23,9 +23,6 @@ window.KindredLive = function (cfg) {
       return { needsVerification: !data.session };
     },
     async signIn({ email, password }) { must(await sb.auth.signInWithPassword({ email, password })); },
-    async signInWithGoogle() {
-      must(await sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: home(), queryParams: { prompt: "select_account" } } }));
-    },
     async resendSignup(email) { must(await sb.auth.resend({ type: "signup", email, options: { emailRedirectTo: home() } })); },
     async sendPasswordReset(email) { must(await sb.auth.resetPasswordForEmail(email, { redirectTo: home() + "#/reset" })); },
     canReset() { return !!uidCache; },
