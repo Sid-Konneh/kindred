@@ -50,7 +50,7 @@ netlify deploy --prod --dir public
 If Netlify answers `Forbidden` to a production deploy, deploy a draft and publish it:
 ```
 netlify deploy --dir public          # prints a deploy id
-netlify api restoreSiteDeploy --data '{"site_id":"0610f7a3-bff5-40f1-91fe-0c1a80c3edb3","deploy_id":"<deploy id>"}'
+netlify api restoreSiteDeploy --data '{"site_id":"fee0fed6-6047-4e79-b052-f4e5c115c96e","deploy_id":"<deploy id>"}'
 ```
 
 ## App stores
