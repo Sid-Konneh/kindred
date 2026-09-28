@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status bar icon for alerts: the Kindred mark in plain white (Android tints it). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <path
+        android:pathData="M43,27.5C36,20.5 24.5,21.5 18,32c-8,14 2,32 32,52"
+        android:strokeWidth="9"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M57,27.5C64,20.5 75.5,21.5 82,32c8,14 -2,32 -32,52"
+        android:strokeWidth="9"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M50,16m-5.5,0a5.5,5.5 0,1 1,11 0a5.5,5.5 0,1 1,-11 0"
+        android:fillColor="#FFFFFFFF" />
+</vector>

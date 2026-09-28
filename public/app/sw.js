@@ -3,7 +3,7 @@
    - Pages: network first with a 3s timeout, so slow 3G still opens the app from cache.
    - Profile photos: cache first (they never change once uploaded), capped at 300 files.
    - Supabase API, auth and realtime: never cached; that data is private and must be fresh. */
-const VERSION = "kindred-app-v11";
+const VERSION = "kindred-app-v12";
 const SHELL = `${VERSION}-shell`, STATIC = `${VERSION}-static`, IMAGES = `${VERSION}-img`;
 const SHELL_FILES = [
   "./", "index.html", "styles.css", "app.js", "backend-demo.js", "backend-live.js", "config.js",
@@ -67,4 +67,16 @@ self.addEventListener("fetch", e => {
   if (req.mode === "navigate" && url.origin === location.origin) { e.respondWith(networkFirst(req)); return; }
   if (url.origin === location.origin) { e.respondWith(staleWhileRevalidate(req, SHELL)); return; }
   if (/fonts\.(googleapis|gstatic)\.com$|cdn\.jsdelivr\.net$/.test(url.hostname)) { e.respondWith(staleWhileRevalidate(req, STATIC)); return; }
+});
+
+// Tapping an alert (see app.js "alerts"): focus the open Kindred tab and tell it where to go, or open one.
+self.addEventListener("notificationclick", e => {
+  e.notification.close();
+  const link = e.notification.data?.link || "discover";
+  e.waitUntil((async () => {
+    const tabs = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const tab = tabs.find(c => c.url.startsWith(self.registration.scope));
+    if (tab) { await tab.focus(); tab.postMessage({ type: "open", link }); return; }
+    await self.clients.openWindow(self.registration.scope + "#/" + link);
+  })());
 });

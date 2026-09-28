@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 
+import '../alerts.dart';
 import '../api.dart';
 import '../models.dart';
 import '../theme.dart';
@@ -143,6 +144,7 @@ class _DiscoverTabState extends State<DiscoverTab> with TickerProviderStateMixin
     if (_feed.length < 4) _load(append: true);
     try {
       final matchId = await Api.swipe(p.id, action);
+      if (matchId != null) Alerts.shownMatch = matchId;
       if (matchId != null && mounted) {
         await app.refreshMatches();
         if (mounted) showMatch(context, p, matchId);

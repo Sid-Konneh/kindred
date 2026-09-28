@@ -8,6 +8,7 @@ A dating app for Sierra Leone. It works in any phone browser and can be installe
 - **Onboarding:** 4 steps covering gender and who you want to see, photos (compressed on the phone before upload to save data), city, what you're looking for, bio, interests and languages.
 - **Discover:** a swipe deck (drag, or use the buttons or arrow keys) with like, pass and super like. You can tap through photos and open a full profile. Filters cover age range, city and who you want to see.
 - **Matches and chat:** "It's a match!" screen, new-matches row, conversations with unread badges, realtime messages, read receipts, icebreakers and a safety notice.
+- **Alerts:** new likes ("Someone liked you", without saying who), matches, messages and calls. They show as a banner while Kindred is on screen, and as a phone notification while it is in the background (on the web, after the member turns them on in Profile → Notifications). A fully closed app gets nothing yet; that needs Firebase Cloud Messaging for Android and Web Push for browsers.
 - **Safety:** block, report (reporting also blocks), unmatch, safety tips, community guidelines and account deletion.
 - **Performance:** splash screen, silver shimmer skeletons while loading, a service worker cache (the app opens offline and on slow 3G), cached profile photos, and a local stale-while-revalidate cache for matches and messages.
 
@@ -23,7 +24,7 @@ Open the address it prints. With `public/config.js` left empty the app runs in *
 
 ### 1. Supabase
 1. Create a project at supabase.com. Pick the region closest to West Africa, e.g. `eu-west-2` (London) or `eu-central-1`.
-2. SQL Editor → run the files in `supabase/migrations/` in order (001 → 012).
+2. SQL Editor → run the files in `supabase/migrations/` in order (001 → 017).
 3. Project Settings → API: copy the URL and **publishable** key into `public/config.js`.
 4. Authentication → URL Configuration: set Site URL to your Netlify URL, and add it under Redirect URLs.
 5. Authentication → Providers → Email: keep **Confirm email** on and set the minimum password length to 8.
@@ -60,6 +61,7 @@ The PWA installs from the browser today: Android shows "Install app", and on iOS
 - **Photo moderation:** photos are not screened automatically yet.
 - **Privacy policy and terms:** these are required for app stores and for handling personal data.
 - **Phone-number sign-in (SMS OTP):** many people in Sierra Leone use phone numbers more than email. Supabase supports this with an SMS provider such as Twilio or Africa's Talking. This is worth adding next.
+- **Push notifications when the app is closed:** alerts currently reach only an open or backgrounded app (see Alerts above).
 - **Rate limiting:** swipes and messages are not rate limited yet.
 
 ## Flutter app (Android & iOS)

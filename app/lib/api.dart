@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'alerts.dart';
 import 'calls.dart';
 import 'config.dart';
 import 'models.dart';
@@ -236,6 +237,21 @@ class Api {
     return () => sb.removeChannel(ch);
   }
 
+  /// Alerts for likes, matches and messages, written by database triggers (migration 017).
+  static VoidCallback onNotifications(void Function(Map<String, dynamic> n) cb) {
+    final me = uid!;
+    final ch = sb
+        .channel('notif:$me')
+        .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'notifications',
+            filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'recipient', value: me),
+            callback: (p) => cb(p.newRecord))
+        .subscribe();
+    return () => sb.removeChannel(ch);
+  }
+
   static Future<void> markRead(String matchId) => sb.rpc('mark_read', params: {'p_match': matchId});
   static Future<void> unmatch(String matchId) async {
     await sb.rpc('unmatch', params: {'p_match': matchId});
@@ -289,7 +305,10 @@ class AppState extends ChangeNotifier {
   Future<void> load(Session? s) async {
     final changed = s?.user.id != session?.user.id;
     session = s;
-    if (changed) Calls.watch(s != null);
+    if (changed) {
+      Calls.watch(s != null);
+      Alerts.watch(s != null);
+    }
     if (s == null) {
       me = null;
       matches = null;

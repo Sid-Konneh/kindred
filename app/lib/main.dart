@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'alerts.dart';
 import 'api.dart';
 import 'calls.dart';
 import 'config.dart';
@@ -22,6 +23,7 @@ Future<void> main() async {
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   await Supabase.initialize(url: supabaseUrl, publishableKey: supabaseKey);
   await Cache.init();
+  await Alerts.init();
   runApp(const KindredApp());
 }
 

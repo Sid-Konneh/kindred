@@ -6,6 +6,7 @@ import '../api.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import '../alerts.dart';
 import '../calls.dart';
 import 'chat_media.dart';
 import 'sheets.dart';
@@ -199,6 +200,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final cached = Cache.get('msgs:${m.id}');
     if (cached is List) _msgs = cached.map((j) => Message.fromJson(Map<String, dynamic>.from(j))).toList();
     _unsub = Api.subscribe(m.id, _onInsert, _reload);
+    Alerts.chatOpened(m.id);
     _reload();
     _loadCalls();
     Calls.log.addListener(_callsChanged);
@@ -253,6 +255,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _unsub?.call();
+    Alerts.chatClosed(m.id);
     _logTimer?.cancel();
     Calls.log.removeListener(_callsChanged);
     _input.dispose();

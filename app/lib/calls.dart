@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
+import 'alerts.dart';
 import 'api.dart';
 import 'main.dart' show navKey;
 import 'models.dart';
@@ -89,6 +90,7 @@ class Calls {
 
   static void _onRow(CallRecord c) {
     log.value++;
+    if (c.callee == Api.uid && c.status != 'ringing') Alerts.callDone(c.id, c.status, c.matchId);
     final s = cur;
     if (c.callee == Api.uid && c.status == 'ringing' && s?.rec?.id != c.id) {
       if (s != null) {
@@ -155,11 +157,14 @@ class Calls {
     }
     if (cur != s) return;
     if (m != null) s.other = m.other;
+    Alerts.ringing(c, s.other.name);
     _ringing = !kIsWeb; // the ringtone plugin has no web version
     if (_ringing) _ringtone.playRingtone(looping: true, volume: 1, asAlarm: false).catchError((_) {});
     HapticFeedback.heavyImpact();
     s._ring = Timer(const Duration(seconds: 45), () {
-      if (cur == s && !s.answered && !s.accepting) _teardown('Missed call from ${s.other.name}');
+      if (cur != s || s.answered || s.accepting) return;
+      Alerts.callDone(c.id, 'missed', c.matchId);
+      _teardown('Missed call from ${s.other.name}');
     });
     await _open(s);
   }

@@ -94,6 +94,14 @@ window.KindredLive = function (cfg) {
         .subscribe();
       return () => sb.removeChannel(ch);
     },
+    // Alerts for likes, matches and messages, written by database triggers (migration 017)
+    onNotifications(cb) {
+      const me = uid();
+      const ch = sb.channel("notif:" + me)
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `recipient=eq.${me}` }, p => cb(p.new))
+        .subscribe();
+      return () => sb.removeChannel(ch);
+    },
     async markRead(matchId) { await sb.rpc("mark_read", { p_match: matchId }); },
     subscribe(matchId, cb) {
       const ch = sb.channel("chat:" + matchId)

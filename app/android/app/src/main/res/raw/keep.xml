@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The alerts icon is looked up by name at runtime, so release builds must not strip it. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@drawable/ic_stat_kindred" />

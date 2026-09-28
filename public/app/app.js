@@ -22,6 +22,7 @@
     star: svg('<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>'),
     chat: svg('<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>'),
     user: svg('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'),
+    bell: svg('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>'),
     sliders: svg('<path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/>'),
     pin: svg('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>'),
     back: svg('<path d="m15 18-6-6 6-6"/>'),
@@ -568,7 +569,7 @@
     drawDeck();
     try {
       const matchId = await api.swipe(p.id, action);
-      if (matchId) { showMatch(p, matchId); refreshMatches(); }
+      if (matchId) { shownMatch = matchId; showMatch(p, matchId); refreshMatches(); }
     } catch (e) {
       toast(friendly(e));
       state.feed.unshift(p); drawDeck();
@@ -634,7 +635,10 @@
     return state.matches;
   }
   screens.matches = () => {
+    const ask = LIVE && canNotify() && Notification.permission === "default" && !pref.get("alerts-asked", false);
     mount(`<div class="screen">${offlineBar()}<header class="top"><h1>Matches</h1></header>
+      ${ask ? `<div class="alerts-ask">${I.bell}<span><b>Never miss a match</b><small>Get alerts for likes, matches, messages and calls.</small></span>
+        <button class="btn primary sm" data-act="alerts-on">Turn on</button><button class="icon-btn" data-act="alerts-later" aria-label="Not now">${I.x}</button></div>` : ""}
       <main class="scroll" id="mlist"></main>${tabs("matches")}</div>`);
     const shown = state.matches || cache.get("matches");
     if (shown) drawMatches(shown); else matchesSkeleton();
@@ -851,6 +855,7 @@
   }
   function onCallRow(c) {
     if (!c?.id) return;
+    if (c.callee === state.uid && c.status !== "ringing") callAlertDone(c);
     if (chatMatch?.id === c.match_id && route().name === "chat") { clearTimeout(logTimer); logTimer = setTimeout(loadCallLog, 400); }
     if (c.callee === state.uid && c.status === "ringing" && cur?.c?.id !== c.id) {
       if (cur) { api.updateCall(c.id, "busy").catch(() => {}); return; }
@@ -961,7 +966,16 @@
     drawCall(S, c.video ? "Kindred video call…" : "Kindred voice call…", true);
     startRinger("in");
     try { navigator.vibrate?.([500, 300, 500, 300, 500]); } catch { /* ignore */ }
-    S.ringTimer = setTimeout(() => cur === S && !S.answered && !S.accepting && teardown(`Missed call from ${S.other.name}`), 45000);
+    S.ringTimer = setTimeout(() => {
+      if (cur !== S || S.answered || S.accepting) return;
+      callAlertDone({ id: c.id, status: "missed" });
+      teardown(`Missed call from ${S.other.name}`);
+    }, 45000);
+    if (document.visibilityState !== "visible") {
+      rang.set(c.id, S.other.name);
+      phoneAlert(`${S.other.name} is calling you`, c.video ? "Kindred video call" : "Kindred voice call", "chat/" + c.match_id, "call-" + c.id,
+        { requireInteraction: true, vibrate: [500, 300, 500, 300, 500] });
+    }
   }
   async function acceptCall() {
     const S = cur; if (!S || S.role !== "callee" || S.accepting) return;
@@ -1056,7 +1070,7 @@
           <div style="display:flex;gap:10px;width:100%;max-width:340px"><a class="btn primary sm" href="#/edit">${I.pencil}Edit profile</a><button class="btn soft sm" data-act="preview-self">${I.eye}Preview</button></div>
         </div>
         <div class="section-title">Discovery</div>
-        <div class="card-list">${row("filters", I.sliders, "Discovery settings")}</div>
+        <div class="card-list">${row("filters", I.sliders, "Discovery settings")}${LIVE ? row("alerts", I.bell, "Notifications") : ""}</div>
         <div class="section-title">Safety</div>
         <div class="card-list">${row("safety", I.shield, "Dating safety tips")}${row("guidelines", I.flag, "Community guidelines")}</div>
         <div class="section-title">Account</div>
@@ -1141,6 +1155,10 @@
     "close-sheet": () => closeSheet(),
     "pw-toggle": b => { const inp = b.previousElementSibling; const show = inp.type === "password"; inp.type = show ? "text" : "password"; b.innerHTML = show ? I.eyeOff : I.eye; b.setAttribute("aria-label", show ? "Hide password" : "Show password"); },
     guidelines: (_, e) => { e.preventDefault(); sheet(tipsHtml("Community guidelines", GUIDELINES, "Kindred works because members treat each other with respect.")); },
+    alerts: () => alertsSheet(),
+    "alerts-on": () => alertsEnable(),
+    "alerts-off": () => { pref.set("alerts", false); closeSheet(); toast("Notifications are off."); },
+    "alerts-later": () => { pref.set("alerts-asked", true); $(".alerts-ask")?.remove(); },
     safety: () => sheet(tipsHtml("Dating safety tips", SAFETY, "Most people on Kindred are genuine. These habits keep it that way.")),
     resend: async b => {
       if (b.dataset.cool) return;
@@ -1413,7 +1431,7 @@
     state.uid = session?.user?.id || null;
     if (!session) {
       Object.assign(state, { me: null, feed: [], feedLoaded: false, matches: null, draft: null, step: 0, recovery: false });
-      watchCalls();
+      watchCalls(); watchAlerts();
       return;
     }
     if (prev !== state.uid) Object.assign(state, { me: null, feed: [], feedLoaded: false, matches: null, draft: null, step: 0 });
@@ -1423,6 +1441,81 @@
     api.touch().catch(() => {});
     registerDevice(prev !== state.uid).catch(() => {});
     if (prev !== state.uid || !callsUnsub) watchCalls();
+    if (prev !== state.uid || !alertsUnsub) watchAlerts();
+  }
+
+  /* ---------- alerts ----------
+     New likes, matches and messages arrive over Realtime (migration 017), and incoming calls come from the calls
+     table. While Kindred is on screen they show as a banner; while it's in the background, as a phone
+     notification if the member turned them on. A fully closed app gets nothing (that would need Web Push). */
+  const alertEl = document.createElement("button");
+  alertEl.id = "alert"; alertEl.type = "button"; $("#shell").appendChild(alertEl);
+  let alertsUnsub = null, alertTimer, shownMatch = null;
+  const rang = new Map(); // call id -> caller name, for calls we put a phone notification up for
+  const canNotify = () => "Notification" in window && "serviceWorker" in navigator;
+  const alertsOn = () => canNotify() && Notification.permission === "granted" && pref.get("alerts", true);
+  const onScreen = () => document.visibilityState === "visible";
+
+  function watchAlerts() {
+    if (alertsUnsub) { try { alertsUnsub(); } catch { /* ignore */ } alertsUnsub = null; }
+    if (!state.uid || !LIVE || !api.onNotifications) return;
+    alertsUnsub = api.onNotifications(onAlert);
+  }
+  function onAlert(n) {
+    if (!n?.kind) return;
+    if (n.kind === "match" || n.kind === "message") refreshMatches().then(() => {
+      const r = route().name;
+      if (r === "matches" && state.matches) drawMatches(state.matches);
+      const nav = $(".tabs"); if (nav) nav.outerHTML = tabs(r);
+    });
+    const link = n.match_id ? "chat/" + n.match_id : "discover";
+    if (!onScreen()) return phoneAlert(n.title, n.body, link, n.match_id || n.kind);
+    if (n.kind === "message" && route().name === "chat" && route().arg === n.match_id) return; // already reading it
+    // The person who made the match is already looking at "It's a match!"; the alert can race the swipe reply.
+    if (n.kind === "match") return setTimeout(() => { if (shownMatch !== n.match_id) banner(n.title, n.body, link); }, 1500);
+    banner(n.title, n.body, link);
+  }
+  function banner(title, body, link) {
+    alertEl.innerHTML = `${MARK(30)}<span><b>${esc(title)}</b>${body ? `<small>${esc(body)}</small>` : ""}</span>`;
+    alertEl.dataset.link = link;
+    alertEl.classList.add("show");
+    clearTimeout(alertTimer);
+    alertTimer = setTimeout(() => alertEl.classList.remove("show"), 5000);
+  }
+  alertEl.addEventListener("click", () => { alertEl.classList.remove("show"); go(alertEl.dataset.link); });
+
+  async function phoneAlert(title, body, link, tag, extra = {}) {
+    if (!alertsOn()) return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, { body, tag: String(tag), renotify: true, icon: "icons/icon-192.png", badge: "icons/icon-192.png", data: { link }, ...extra });
+    } catch { /* this browser won't show it */ }
+  }
+  // A ringing call we alerted for has stopped: swap the alert for "Missed call", or clear it if it was answered.
+  async function callAlertDone(c) {
+    if (!rang.has(c.id)) return;
+    const name = rang.get(c.id); rang.delete(c.id);
+    if ((c.status === "missed" || c.status === "cancelled") && !onScreen()) return phoneAlert(`Missed call from ${name}`, "Tap to open the chat.", "chat/" + c.match_id, "call-" + c.id);
+    try { (await (await navigator.serviceWorker.ready).getNotifications({ tag: "call-" + c.id })).forEach(x => x.close()); } catch { /* ignore */ }
+  }
+  // Tapping a phone notification: the service worker focuses this tab and tells it where to go.
+  if (canNotify()) navigator.serviceWorker.addEventListener("message", e => { if (e.data?.type === "open") go(e.data.link || "discover"); });
+
+  function alertsSheet() {
+    const perm = canNotify() ? Notification.permission : "unsupported";
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    sheet(`<h3>Notifications</h3><p class="muted sm" style="margin:0 0 6px">Get alerts for new likes, matches, messages and calls while Kindred is open or running in the background.</p>
+      ${perm === "unsupported" ? `<p class="sm">This browser can't show notifications.${ios ? " On iPhone, add Kindred to your Home Screen first (Share → Add to Home Screen), then open it from there." : ""}</p><button class="btn soft" data-act="close-sheet">OK</button>`
+      : perm === "denied" ? `<p class="sm">Notifications are blocked for Kindred. Allow them in your browser's site settings, then come back here.</p><button class="btn soft" data-act="close-sheet">OK</button>`
+      : alertsOn() ? `<button class="btn soft" data-act="alerts-off">Turn off notifications</button>`
+      : `<button class="btn primary" data-act="alerts-on">Turn on notifications</button>`}`);
+  }
+  async function alertsEnable() {
+    pref.set("alerts", true); pref.set("alerts-asked", true);
+    if (canNotify() && Notification.permission === "default") { try { await Notification.requestPermission(); } catch { /* ignore */ } }
+    closeSheet();
+    $(".alerts-ask")?.remove();
+    toast(alertsOn() ? "Notifications are on." : "Notifications are blocked. You can allow them in your browser's site settings.");
   }
 
   /* ---------- device (platform, OS, browser, model) for account security and support ---------- */
