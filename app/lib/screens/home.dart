@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 
+import '../ads.dart';
 import '../alerts.dart';
 import '../api.dart';
 import '../models.dart';
@@ -27,6 +28,7 @@ class _HomeShellState extends State<HomeShell> {
     super.initState();
     app.cachedMatches();
     app.refreshMatches();
+    Ads.init();
   }
 
   @override
@@ -37,7 +39,10 @@ class _HomeShellState extends State<HomeShell> {
       builder: (context, _) {
         final unread = app.unreadChats;
         return Scaffold(
-          body: IndexedStack(index: _tab, children: const [DiscoverTab(), MatchesTab(), ProfileTab()]),
+          body: Column(children: [
+            Expanded(child: IndexedStack(index: _tab, children: const [DiscoverTab(), MatchesTab(), ProfileTab()])),
+            const AdBanner(),
+          ]),
           bottomNavigationBar: NavigationBar(
             selectedIndex: _tab,
             backgroundColor: p.surface,

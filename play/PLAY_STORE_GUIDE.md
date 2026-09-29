@@ -57,7 +57,7 @@ Play Console → **Policy and programs → App content**. Google only allows the
 - Username / password: from `play/review-accounts.txt` (account A)
 - Other information: *"Sign in with reviewer account A. The Discover tab shows reviewer account B, who has already liked A. Tap the heart to match, then open the chat. You can sign in as B on a second device to reply. Both accounts are in a separate test pool and never shown to real members."*
 
-**Ads:** *No, my app does not contain ads.*
+**Ads:** *Yes, my app contains ads* (AdMob banners on the main tabs). Data safety: declare **Device or other IDs** (advertising ID), collected and shared with Google for advertising.
 
 **Content rating:** start the questionnaire, email = the Kindred Gmail, category **Social / Communication (includes dating)**.
 - Violence, sexuality, language, controlled substances, gambling, crude humour: **No** to all
