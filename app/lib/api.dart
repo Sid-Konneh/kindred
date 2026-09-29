@@ -11,6 +11,7 @@ import 'alerts.dart';
 import 'calls.dart';
 import 'config.dart';
 import 'models.dart';
+import 'push.dart';
 
 SupabaseClient get sb => Supabase.instance.client;
 
@@ -92,6 +93,7 @@ class Api {
   static Future<void> sendReset(String email) => sb.auth.resetPasswordForEmail(email, redirectTo: appRedirect);
   static Future<void> updatePassword(String pw) => sb.auth.updateUser(UserAttributes(password: pw));
   static Future<void> signOut() async {
+    await Push.signOut();
     await Cache.clear();
     await sb.auth.signOut();
   }
@@ -313,6 +315,7 @@ class AppState extends ChangeNotifier {
     if (changed) {
       Calls.watch(s != null);
       Alerts.watch(s != null);
+      Push.watch(s != null);
     }
     if (s == null) {
       me = null;

@@ -8,6 +8,7 @@ import 'api.dart';
 import 'calls.dart';
 import 'main.dart' show navKey;
 import 'models.dart';
+import 'push.dart';
 import 'screens/matches.dart' show ChatScreen;
 import 'theme.dart';
 import 'widgets.dart';
@@ -51,6 +52,10 @@ class Alerts {
         onDidReceiveNotificationResponse: (r) => open(r.payload),
       );
       _ready = true;
+      // Firebase pushes name these channels, so they must exist even before the first local alert
+      final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      await android?.createNotificationChannel(const AndroidNotificationChannel('activity', 'Likes, matches and messages', description: 'New likes, matches and messages', importance: Importance.high));
+      await android?.createNotificationChannel(const AndroidNotificationChannel('calls', 'Calls', description: 'Incoming voice and video calls', importance: Importance.max));
       final launch = await _plugin.getNotificationAppLaunchDetails();
       if (launch?.didNotificationLaunchApp ?? false) _launchPayload = launch!.notificationResponse?.payload;
     } catch (_) {/* alerts are optional */}
@@ -79,7 +84,7 @@ class Alerts {
     if (kind == 'match' || kind == 'message') app.refreshMatches();
     final payload = matchId ?? 'discover';
     if (!_onScreen) {
-      _show(_id(matchId ?? kind), title, body, payload, _activity);
+      if (!Push.enabled) _show(_id(matchId ?? kind), title, body, payload, _activity); // with push, Firebase shows it
     } else if (kind == 'message' && openChat == matchId) {
       // already reading it
     } else if (kind == 'match') {
@@ -101,7 +106,7 @@ class Alerts {
 
   /// A call started ringing. On screen the call screen already shows it; in the background, alert.
   static void ringing(CallRecord c, String name) {
-    if (_onScreen) return;
+    if (_onScreen || Push.enabled) return;
     _rang[c.id] = name;
     _show(_id('call-${c.id}'), '$name is calling you', c.video ? 'Kindred video call' : 'Kindred voice call', c.matchId, _calls);
   }
@@ -111,7 +116,7 @@ class Alerts {
     final name = _rang.remove(callId);
     if (name == null || !_ready) return;
     final id = _id('call-$callId');
-    if ((status == 'missed' || status == 'cancelled') && !_onScreen) {
+    if ((status == 'missed' || status == 'cancelled') && !_onScreen && !Push.enabled) {
       _show(id, 'Missed call from $name', 'Tap to open the chat.', matchId, _activity);
     } else {
       _plugin.cancel(id: id).catchError((_) {});

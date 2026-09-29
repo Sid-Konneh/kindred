@@ -10,6 +10,7 @@ import 'alerts.dart';
 import 'api.dart';
 import 'calls.dart';
 import 'config.dart';
+import 'push.dart';
 import 'screens/auth.dart';
 import 'screens/home.dart';
 import 'screens/onboarding.dart';
@@ -24,6 +25,7 @@ Future<void> main() async {
   await Supabase.initialize(url: supabaseUrl, publishableKey: supabaseKey);
   await Cache.init();
   await Alerts.init();
+  await Push.init();
   runApp(const KindredApp());
 }
 
