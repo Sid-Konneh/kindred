@@ -212,6 +212,11 @@ class Api {
       CallRecord.fromJson(Map<String, dynamic>.from(await sb.rpc('start_call', params: {'p_match': matchId, 'p_video': video, 'p_offer': offer})));
   static Future<CallRecord> updateCall(String id, String status, [String? answer]) async =>
       CallRecord.fromJson(Map<String, dynamic>.from(await sb.rpc('update_call', params: {'p_call': id, 'p_status': status, 'p_answer': answer})));
+  static Future<CallRecord?> getCall(String id) async {
+    final r = await sb.from('calls').select().eq('id', id).maybeSingle();
+    return r == null ? null : CallRecord.fromJson(r);
+  }
+
   static Future<List<CallRecord>> ringingCalls() async {
     final rows = await sb.rpc('my_ringing_calls');
     return (rows as List).map((r) => CallRecord.fromJson(Map<String, dynamic>.from(r))).toList();

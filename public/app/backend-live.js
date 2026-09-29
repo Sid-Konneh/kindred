@@ -80,6 +80,7 @@ window.KindredLive = function (cfg) {
     // Calls: WebRTC offer/answer travel through the calls table (see migration 014)
     async startCall(matchId, video, offer) { return must(await sb.rpc("start_call", { p_match: matchId, p_video: !!video, p_offer: offer })); },
     async updateCall(id, status, answer) { return must(await sb.rpc("update_call", { p_call: id, p_status: status, p_answer: answer || null })); },
+    async getCall(id) { return must(await sb.from("calls").select("*").eq("id", id).maybeSingle()); },
     async ringingCalls() { return must(await sb.rpc("my_ringing_calls")) || []; },
     async getCalls(matchId) {
       return must(await sb.from("calls").select("id,match_id,caller,callee,video,status,created_at,answered_at,ended_at")
@@ -94,6 +95,9 @@ window.KindredLive = function (cfg) {
         .subscribe();
       return () => sb.removeChannel(ch);
     },
+    // Push to a closed app (migration 018): this browser's Web Push subscription
+    async registerPush(endpoint, p256dh, auth) { must(await sb.rpc("register_push", { p_kind: "web", p_endpoint: endpoint, p_p256dh: p256dh, p_auth: auth })); },
+    async unregisterPush(endpoint) { await sb.rpc("unregister_push", { p_endpoint: endpoint }); },
     // Alerts for likes, matches and messages, written by database triggers (migration 017)
     onNotifications(cb) {
       const me = uid();

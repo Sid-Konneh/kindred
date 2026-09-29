@@ -954,7 +954,7 @@
       if (cur !== S) return;
       S.c = await api.startCall(S.matchId, video, pc.localDescription.sdp);
       if (cur !== S) { api.updateCall(S.c.id, "cancelled").catch(() => {}); return; }
-      callStatus("Ringing…"); startRinger("out");
+      callStatus("Ringing…"); startRinger("out"); pollCall(S);
       S.ringTimer = setTimeout(() => cur === S && !S.answered && hangup("missed", `${S.other.name} didn't answer`), 45000);
     } catch (e) { if (cur === S) teardown(mediaError(e)); }
   }
@@ -991,9 +991,22 @@
       if (cur !== S) return;
       const row = await api.updateCall(S.c.id, "accepted", pc.localDescription.sdp);
       if (cur !== S) return;
-      if (row?.status === "accepted") S.answered = true;
+      if (row?.status === "accepted") { S.answered = true; S.c = { ...S.c, ...row }; pollCall(S); }
       else teardown(`Missed call from ${S.other.name}`);
     } catch (e) { if (cur === S) { api.updateCall(S.c.id, "failed").catch(() => {}); teardown(mediaError(e)); } }
+  }
+  // Realtime can miss or delay the update carrying the other side's answer, and then the call never connects
+  // (the network path opens but the encrypted handshake can't finish). So while a call is being set up, also
+  // read its row every 1.5 s and act on any change.
+  function pollCall(S) {
+    clearInterval(S.poll);
+    S.poll = setInterval(async () => {
+      if (cur !== S || S.started || !S.c?.id || !api.getCall) return clearInterval(S.poll);
+      try {
+        const c = await api.getCall(S.c.id);
+        if (cur === S && c && (c.status !== S.c.status || (c.answer && !S.c.answer))) onCallRow(c);
+      } catch { /* offline: realtime or the next check */ }
+    }, 1500);
   }
   function hangup(status, msg) {
     const S = cur; if (!S) return;
@@ -1004,7 +1017,7 @@
   function teardown(msg) {
     const S = cur; if (!S) return;
     cur = null;
-    stopRinger(); clearTimeout(S.ringTimer); clearTimeout(S.dropTimer); clearInterval(S.tick);
+    stopRinger(); clearTimeout(S.ringTimer); clearTimeout(S.dropTimer); clearInterval(S.tick); clearInterval(S.poll);
     try { S.pc?.close(); } catch { /* ignore */ }
     S.local?.getTracks().forEach(t => t.stop());
     callEl.classList.remove("show", "live");
@@ -1158,7 +1171,7 @@
     guidelines: (_, e) => { e.preventDefault(); sheet(tipsHtml("Community guidelines", GUIDELINES, "Kindred works because members treat each other with respect.")); },
     alerts: () => alertsSheet(),
     "alerts-on": () => alertsEnable(),
-    "alerts-off": () => { pref.set("alerts", false); closeSheet(); toast("Notifications are off."); },
+    "alerts-off": () => { pref.set("alerts", false); stopPush(); closeSheet(); toast("Notifications are off."); },
     "alerts-later": () => { pref.set("alerts-asked", true); $(".alerts-ask")?.remove(); },
     safety: () => sheet(tipsHtml("Dating safety tips", SAFETY, "Most people on Kindred are genuine. These habits keep it that way.")),
     resend: async b => {
@@ -1201,7 +1214,7 @@
     },
     "reveal-media": b => { revealed.add(b.dataset.id); mediaNodes.delete(b.dataset.id); const el = b.closest(".bubble.media"); el.classList.remove("blurred"); b.remove(); fillMedia(el); },
     "use-email": b => { const f = b.closest("form"); f.elements.email.value = b.dataset.email; formError(f, ""); f.elements.email.focus(); },
-    signout: async () => { await api.signOut(); },
+    signout: async () => { await stopPush(); await api.signOut(); },
     step: async b => {
       const dir = +b.dataset.dir;
       if (dir < 0) { state.step = Math.max(0, state.step - 1); return screens.setup(); }
@@ -1461,6 +1474,7 @@
     if (alertsUnsub) { try { alertsUnsub(); } catch { /* ignore */ } alertsUnsub = null; }
     if (!state.uid || !LIVE || !api.onNotifications) return;
     alertsUnsub = api.onNotifications(onAlert);
+    startPush();
   }
   function onAlert(n) {
     if (!n?.kind) return;
@@ -1485,8 +1499,33 @@
   }
   alertEl.addEventListener("click", () => { alertEl.classList.remove("show"); go(alertEl.dataset.link); });
 
+  // Push (migration 018): with a Web Push subscription the server alerts this device even when Kindred is closed,
+  // and the service worker shows it. The page then leaves background alerts to the push, so none show twice.
+  const VAPID_KEY = "BMA3_HuiJUBiGfZWwFQnNOiL66aYGSLo10kmlVePzHIRygOjgG-tvAxvSRd8JiRmIEnIsGegqps0mKHX7V6GcrY";
+  let pushOn = false;
+  const canPush = () => canNotify() && "PushManager" in window && LIVE && !!api.registerPush;
+  async function startPush() {
+    if (!canPush() || !alertsOn() || !state.uid) return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const key = Uint8Array.from(atob(VAPID_KEY.replace(/-/g, "+").replace(/_/g, "/")), ch => ch.charCodeAt(0));
+      const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }));
+      const j = sub.toJSON();
+      await api.registerPush(j.endpoint, j.keys.p256dh, j.keys.auth);
+      pushOn = true;
+    } catch { pushOn = false; /* blocked or unsupported: alerts still work while Kindred is open */ }
+  }
+  async function stopPush() {
+    pushOn = false;
+    if (!canPush()) return;
+    try {
+      const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+      if (sub) { await api.unregisterPush(sub.endpoint).catch(() => {}); await sub.unsubscribe(); }
+    } catch { /* ignore */ }
+  }
+
   async function phoneAlert(title, body, link, tag, extra = {}) {
-    if (!alertsOn()) return;
+    if (!alertsOn() || pushOn) return;
     try {
       const reg = await navigator.serviceWorker.ready;
       await reg.showNotification(title, { body, tag: String(tag), renotify: true, icon: "icons/icon-192.png", badge: "icons/icon-192.png", data: { link }, ...extra });
@@ -1505,7 +1544,7 @@
   function alertsSheet() {
     const perm = canNotify() ? Notification.permission : "unsupported";
     const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
-    sheet(`<h3>Notifications</h3><p class="muted sm" style="margin:0 0 6px">Get alerts for new likes, matches, messages and calls while Kindred is open or running in the background.</p>
+    sheet(`<h3>Notifications</h3><p class="muted sm" style="margin:0 0 6px">Get alerts for new likes, matches, messages and calls${canPush() ? ", even when Kindred is closed" : " while Kindred is open or running in the background"}.</p>
       ${perm === "unsupported" ? `<p class="sm">This browser can't show notifications.${ios ? " On iPhone, add Kindred to your Home Screen first (Share → Add to Home Screen), then open it from there." : ""}</p><button class="btn soft" data-act="close-sheet">OK</button>`
       : perm === "denied" ? `<p class="sm">Notifications are blocked for Kindred. Allow them in your browser's site settings, then come back here.</p><button class="btn soft" data-act="close-sheet">OK</button>`
       : alertsOn() ? `<button class="btn soft" data-act="alerts-off">Turn off notifications</button>`
@@ -1516,6 +1555,7 @@
     if (canNotify() && Notification.permission === "default") { try { await Notification.requestPermission(); } catch { /* ignore */ } }
     closeSheet();
     $(".alerts-ask")?.remove();
+    if (alertsOn()) await startPush();
     toast(alertsOn() ? "Notifications are on." : "Notifications are blocked. You can allow them in your browser's site settings.");
   }
 

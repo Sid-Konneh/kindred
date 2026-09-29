@@ -41,7 +41,7 @@ class CallSession extends ChangeNotifier {
   String status;
   DateTime? started;
   bool answered = false, accepting = false, muted = false, camOff = false, speaker, frontCamera = true, hasRemoteVideo = false, over = false;
-  Timer? _ring, _drop, _tick;
+  Timer? _ring, _drop, _tick, _poll;
 
   CallSession({required this.role, required this.matchId, required this.video, required this.other, required this.status, this.rec}) : speaker = video;
 
@@ -139,6 +139,7 @@ class Calls {
         return;
       }
       s.set('Ringing…');
+      _poll(s);
       s._ring = Timer(const Duration(seconds: 45), () {
         if (cur == s && !s.answered) hangup('missed', "${s.other.name} didn't answer");
       });
@@ -187,6 +188,8 @@ class Calls {
       if (cur != s) return;
       if (row.status == 'accepted') {
         s.answered = true;
+        s.rec = row;
+        _poll(s);
       } else {
         _teardown('Missed call from ${s.other.name}');
       }
@@ -249,6 +252,25 @@ class Calls {
   }
 
   // ----- internals -----
+  /// Realtime can miss or delay the update carrying the other side's answer, and then the call never connects
+  /// (the network path opens but the encrypted handshake can't finish). So while a call is being set up, also
+  /// read its row every 1.5 s and act on any change.
+  static void _poll(CallSession s) {
+    s._poll?.cancel();
+    s._poll = Timer.periodic(const Duration(milliseconds: 1500), (_) async {
+      final id = s.rec?.id;
+      if (cur != s || s.started != null || id == null) {
+        s._poll?.cancel();
+        return;
+      }
+      try {
+        final c = await Api.getCall(id);
+        final known = s.rec;
+        if (cur == s && c != null && (c.status != known?.status || (c.answer != null && known?.answer == null))) _onRow(c);
+      } catch (_) {/* offline: realtime or the next check */}
+    });
+  }
+
   static Future<void> _open(CallSession s) async {
     await s.localView.initialize();
     await s.remoteView.initialize();
@@ -360,6 +382,7 @@ class Calls {
     s._ring?.cancel();
     s._drop?.cancel();
     s._tick?.cancel();
+    s._poll?.cancel();
     s.pc?.close().catchError((_) {});
     for (final t in s.local?.getTracks() ?? <MediaStreamTrack>[]) {
       t.stop();

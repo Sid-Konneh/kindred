@@ -3,7 +3,7 @@
    - Pages: network first with a 3s timeout, so slow 3G still opens the app from cache.
    - Profile photos: cache first (they never change once uploaded), capped at 300 files.
    - Supabase API, auth and realtime: never cached; that data is private and must be fresh. */
-const VERSION = "kindred-app-v14";
+const VERSION = "kindred-app-v16";
 const SHELL = `${VERSION}-shell`, STATIC = `${VERSION}-static`, IMAGES = `${VERSION}-img`;
 const SHELL_FILES = [
   "./", "index.html", "styles.css", "app.js", "backend-demo.js", "backend-live.js", "config.js",
@@ -78,5 +78,21 @@ self.addEventListener("notificationclick", e => {
     const tab = tabs.find(c => c.url.startsWith(self.registration.scope));
     if (tab) { await tab.focus(); tab.postMessage({ type: "open", link }); return; }
     await self.clients.openWindow(self.registration.scope + "#/" + link);
+  })());
+});
+
+// Push from the server (migration 018) reaches this device even when Kindred is closed. If Kindred is open and on
+// screen, the page already shows its own banner, so the push is skipped there. Calls stay up until answered.
+self.addEventListener("push", e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { title: "Kindred", body: e.data?.text() || "" }; }
+  e.waitUntil((async () => {
+    const tabs = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    if (tabs.some(c => c.visibilityState === "visible" && c.url.startsWith(self.registration.scope))) return;
+    await self.registration.showNotification(d.title || "Kindred", {
+      body: d.body || "", tag: d.tag || "kindred", renotify: true, data: { link: d.link || "discover" },
+      icon: "icons/icon-192.png", badge: "icons/icon-192.png",
+      requireInteraction: d.kind === "call", vibrate: d.kind === "call" ? [500, 300, 500, 300, 500] : [120],
+    });
   })());
 });
