@@ -7,7 +7,7 @@
     X-Content-Type-Options = "nosniff"
     X-Frame-Options = "DENY"
     Referrer-Policy = "strict-origin-when-cross-origin"
-    Permissions-Policy = "geolocation=(), camera=(), microphone=()"
+    Permissions-Policy = "geolocation=(), camera=(self), microphone=(self)"
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
 
 # The service worker and config must never be served stale, or updates can't reach phones.

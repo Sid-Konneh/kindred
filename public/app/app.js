@@ -906,7 +906,8 @@
   function makePc(S) {
     const pc = S.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     S.local.getTracks().forEach(t => pc.addTrack(t, S.local));
-    pc.ontrack = e => { const rv = $("#call-remote"); if (rv && e.streams[0] && rv.srcObject !== e.streams[0]) rv.srcObject = e.streams[0]; };
+    // Safari on iPhone doesn't always autoplay a stream set later (voice calls hide the video), so start it explicitly
+    pc.ontrack = e => { const rv = $("#call-remote"); if (rv && e.streams[0] && rv.srcObject !== e.streams[0]) { rv.srcObject = e.streams[0]; rv.play?.().catch(() => {}); } };
     pc.onconnectionstatechange = () => {
       if (cur !== S) return;
       const st = pc.connectionState;
