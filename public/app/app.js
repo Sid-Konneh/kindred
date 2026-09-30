@@ -677,6 +677,7 @@
     if (!m) { toast("This match is no longer available."); return go("matches"); }
     if (route().name !== "chat") return;
     chatMatch = m;
+    clearAlerts(id); // this chat's message/match notifications are read now
     const o = m.other;
     mount(`<div class="screen">${offlineBar()}
       <header class="top chat-top"><a class="icon-btn" href="#/matches" aria-label="Back">${I.back}</a>
@@ -1533,10 +1534,15 @@
   }
   // A ringing call we alerted for has stopped: swap the alert for "Missed call", or clear it if it was answered.
   async function callAlertDone(c) {
-    if (!rang.has(c.id)) return;
+    const missed = c.status === "missed" || c.status === "cancelled";
     const name = rang.get(c.id); rang.delete(c.id);
-    if ((c.status === "missed" || c.status === "cancelled") && !onScreen()) return phoneAlert(`Missed call from ${name}`, "Tap to open the chat.", "chat/" + c.match_id, "call-" + c.id);
-    try { (await (await navigator.serviceWorker.ready).getNotifications({ tag: "call-" + c.id })).forEach(x => x.close()); } catch { /* ignore */ }
+    if (missed && pushOn) return; // the server's "Missed call" push replaces the ringing alert
+    if (missed && name && !onScreen()) return phoneAlert(`Missed call from ${name}`, "Tap to open the chat.", "chat/" + c.match_id, "call-" + c.id);
+    clearAlerts("call-" + c.id); // answered, declined or ended: the "is calling you" alert (local or pushed) goes
+  }
+  async function clearAlerts(tag) {
+    if (!canNotify()) return;
+    try { (await (await navigator.serviceWorker.ready).getNotifications({ tag })).forEach(x => x.close()); } catch { /* ignore */ }
   }
   // Tapping a phone notification: the service worker focuses this tab and tells it where to go.
   if (canNotify()) navigator.serviceWorker.addEventListener("message", e => { if (e.data?.type === "open") go(e.data.link || "discover"); });

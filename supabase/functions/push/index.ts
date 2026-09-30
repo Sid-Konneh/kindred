@@ -58,6 +58,7 @@ async function sendWeb(d: Device, a: Alert): Promise<boolean> {
     return true;
   } catch (e) {
     const code = (e as { statusCode?: number }).statusCode;
+    console.error(`[push] web ${code}: ${String((e as { body?: string }).body ?? e).slice(0, 300)}`);
     return !(code === 404 || code === 410); // gone: forget the device
   }
 }
@@ -82,6 +83,7 @@ async function sendFcm(d: Device, a: Alert, saJson: string): Promise<boolean> {
   });
   if (r.ok) return true;
   const t = await r.text();
+  console.error(`[push] FCM ${r.status}: ${t.slice(0, 300)}`);
   return !(r.status === 404 || t.includes("UNREGISTERED") || t.includes("INVALID_ARGUMENT"));
 }
 
@@ -96,7 +98,7 @@ Deno.serve(async (req) => {
   await Promise.all((devices as Device[] ?? []).map(async (d) => {
     let ok = true;
     if (d.kind === "web" && c.push_vapid_private && d.p256dh && d.auth) ok = await sendWeb(d, a);
-    else if (d.kind === "fcm" && c.push_fcm_service_account) ok = await sendFcm(d, a, c.push_fcm_service_account).catch(() => true);
+    else if (d.kind === "fcm" && c.push_fcm_service_account) ok = await sendFcm(d, a, c.push_fcm_service_account).catch((e) => { console.error("[push] FCM failed:", e); return true; });
     else return;
     if (ok) sent++; else gone.push(d.id);
   }));

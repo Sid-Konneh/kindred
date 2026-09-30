@@ -114,19 +114,26 @@ class Alerts {
   /// A ringing call we alerted for has stopped: swap the alert for "Missed call", or clear it if it was answered.
   static void callDone(String callId, String status, String matchId) {
     final name = _rang.remove(callId);
-    if (name == null || !_ready) return;
-    final id = _id('call-$callId');
-    if ((status == 'missed' || status == 'cancelled') && !_onScreen && !Push.enabled) {
-      _show(id, 'Missed call from $name', 'Tap to open the chat.', matchId, _activity);
+    if (!_ready) return;
+    final missed = status == 'missed' || status == 'cancelled';
+    if (missed && Push.enabled) return; // the server's "Missed call" push replaces the ringing alert
+    if (missed && name != null && !_onScreen) {
+      _show(_id('call-$callId'), 'Missed call from $name', 'Tap to open the chat.', matchId, _activity);
     } else {
-      _plugin.cancel(id: id).catchError((_) {});
+      _clear('call-$callId'); // answered, declined or ended
     }
   }
 
   /// Opening a chat clears its alerts.
   static void chatOpened(String matchId) {
     openChat = matchId;
-    if (_ready) _plugin.cancel(id: _id(matchId)).catchError((_) {});
+    if (_ready) _clear(matchId);
+  }
+
+  /// Removes an alert whether this app showed it (id from its key) or Firebase did (id 0, tagged with the key).
+  static void _clear(String key) {
+    _plugin.cancel(id: _id(key)).catchError((_) {});
+    _plugin.cancel(id: 0, tag: key).catchError((_) {});
   }
 
   static void chatClosed(String matchId) {
