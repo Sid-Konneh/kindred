@@ -132,7 +132,7 @@
       <div class="brand">${MARK}kindred <small>Admin</small></div>
       <nav class="nav">${tabs.map(([k, l]) => `<a href="#${k}" data-tab="${k}" class="${state.tab === k ? "on" : ""}">${svgI(ICON[k === "team" ? "team" : k])}${l}${k === "reports" ? `<span class="count" id="rc" ${state.openReports ? "" : "hidden"}>${state.openReports}</span>` : ""}${k === "flags" ? `<span class="count" id="fc" ${state.openFlags ? "" : "hidden"}>${state.openFlags}</span>` : ""}</a>`).join("")}</nav>
       <div class="me"><b>${esc(state.me.name || state.me.email)}</b><span class="muted">${esc(state.me.email)}</span><div style="margin:8px 0"><span class="role ${state.me.role}">${state.me.role === "super_admin" ? "Super admin" : "Moderator"}</span></div>
-        <button class="btn sm" id="out">Sign out</button> <a class="btn sm ghost" href="../app/">Open app</a></div>
+        <button class="btn sm" id="out">Sign out</button> <a class="btn sm ghost" href="https://kindred-sl.netlify.app/app/">Open app</a></div>
       </aside><main id="main"></main></div>`;
     $$("[data-tab]").forEach(a => a.onclick = e => { e.preventDefault(); go(a.dataset.tab); });
     $("#out").onclick = async () => { await sb.auth.signOut(); renderSignIn(); };

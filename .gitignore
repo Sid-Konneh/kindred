@@ -13,3 +13,5 @@ play/service-account.json
 play/node_modules/
 play/review-accounts.txt
 app/android/.kotlin/
+
+.vercel
