@@ -2,6 +2,6 @@
   "outputDirectory": "public",
   "redirects": [
     { "source": "/admin", "destination": "https://kindred-admin.vercel.app/admin/", "permanent": false },
-    { "source": "/admin/:path*", "destination": "https://kindred-admin.vercel.app/admin/:path*", "permanent": false }
+    { "source": "/admin/(.*)", "destination": "https://kindred-admin.vercel.app/admin/$1", "permanent": false }
   ]
 }
