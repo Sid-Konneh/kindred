@@ -1,0 +1,16 @@
+{
+  "installCommand": "",
+  "buildCommand": "rm -rf dist && mkdir -p dist/app && cp -r ../public/admin dist/ && cp ../public/app/config.js dist/app/ && cp ../public/icon.svg dist/",
+  "outputDirectory": "dist",
+  "redirects": [{ "source": "/", "destination": "/admin/", "permanent": false }],
+  "headers": [
+    { "source": "/(.*)", "headers": [
+      { "key": "X-Content-Type-Options", "value": "nosniff" },
+      { "key": "X-Frame-Options", "value": "DENY" },
+      { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+      { "key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains" },
+      { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+      { "key": "Cache-Control", "value": "no-cache" }
+    ]}
+  ]
+}
