@@ -49,6 +49,7 @@
     if (/invalid login/i.test(m)) return "Email or password is incorrect.";
     if (/admins only/i.test(m)) return "Your account doesn't have admin access.";
     if (/failed to fetch|network/i.test(m)) return "Can't reach Kindred. Check your connection.";
+    if (/could not find the function/i.test(m)) return "This needs a database update that hasn't been run yet (supabase/migrations/019_admin_trends.sql).";
     return m;
   }
   let tt;
@@ -173,6 +174,10 @@
         ${tile("Open reports", s.reports_open, `${num(s.reports_total)} report${s.reports_total === 1 ? "" : "s"} in total`, s.reports_open > 0)}
       </div>
       <div class="grid2">
+        <div class="card" id="wow"><h2>This week vs last week</h2><div class="boot" style="min-height:220px"><span class="spin"></span></div></div>
+        <div class="card" id="dau"><h2>Daily active members</h2><div class="boot" style="min-height:220px"><span class="spin"></span></div></div>
+      </div>
+      <div class="grid2">
         <div class="card"><div class="head" style="margin:0 0 8px;align-items:flex-start"><div><h2 id="act-title">Activity per day</h2><p class="sub" id="act-sub" style="margin:0"></p></div>
             <div class="seg" id="range">${[[30, "30 days"], [90, "90 days"]].map(([d, l]) => `<button data-days="${d}" class="${state.days === d ? "on" : ""}">${l}</button>`).join("")}</div></div>
           <div class="seg" id="metric" style="margin-bottom:12px">${METRICS.map(([k, l]) => `<button data-metric="${k}" class="${state.metric === k ? "on" : ""}">${l}</button>`).join("")}</div>
@@ -193,6 +198,9 @@
       m.innerHTML = `<div class="label">Photos &amp; videos sent</div><div class="num">${num(c.media)}</div><div class="note">${num(c.media_7d)} this week · ${num(c.videos)} video${c.videos === 1 ? "" : "s"}</div>`;
     }).catch(() => {});
     rpc("admin_online").then(n => { const el = $("#online"); if (el) el.innerHTML = `<b style="color:var(--good)">● ${num(n)} online now</b><br>`; }).catch(() => {});
+    rpc("admin_trends").then(t => { drawWeek(t); drawDau(t); }).catch(e => {
+      $$("#wow, #dau").forEach(el => { el.innerHTML = `<h2>${el.id === "wow" ? "This week vs last week" : "Daily active members"}</h2><p class="empty">${esc(friendly(e))}</p>`; });
+    });
     $$("#metric [data-metric]").forEach(b => b.onclick = () => { state.metric = b.dataset.metric; $$("#metric button").forEach(x => x.classList.toggle("on", x === b)); drawActivity(); });
     $$("#range [data-days]").forEach(b => b.onclick = () => { state.days = +b.dataset.days; $$("#range button").forEach(x => x.classList.toggle("on", x === b)); loadActivity(); });
     loadActivity();
@@ -201,6 +209,49 @@
       $("#funnel").innerHTML = steps.map(st => `<div class="hb" title="${esc(st.label)}: ${num(st.count)}"><span class="k">${esc(st.label)}</span><span class="track"><span class="fill" style="width:${first && st.count ? Math.max(2, (100 * st.count) / first) : 0}%"></span></span><span class="v">${num(st.count)}</span></div>`).join("")
         + (first ? `<p class="sub" style="margin:10px 0 0">${Math.round((100 * (steps[5]?.count || 0)) / first)}% of members have sent a message.</p>` : "");
     }).catch(e => { $("#funnel").innerHTML = `<p class="empty">${esc(friendly(e))}</p>`; });
+  }
+  /* "Active" in admin_trends = swiped, messaged or called that day; last 7 days against the 7 before. */
+  const WEEK = [["active", "Active members"], ["signups", "New members"], ["likes", "Likes"], ["matches", "Matches"], ["messages", "Messages"], ["calls", "Calls"], ["reports", "Reports", true]];
+  const change = (cur, prev) => prev ? Math.round((100 * (cur - prev)) / prev) : null;
+  function deltaBadge(cur, prev, upIsBad) {
+    const c = change(cur, prev);
+    if (c == null) return cur ? '<span class="badge info">New</span>' : '<span class="badge">—</span>';
+    if (!c) return '<span class="badge">No change</span>';
+    return `<span class="badge ${(c > 0) !== !!upIsBad ? "good" : "bad"}">${c > 0 ? "▲" : "▼"} ${Math.abs(c)}%</span>`;
+  }
+  // ponytail: fixed thresholds; tune them once Kindred has a few months of normal weeks to compare against.
+  function attention(t) {
+    const { cur, prev } = t.weeks, out = [], pl = (n, w) => `${num(n)} ${w}${n === 1 ? "" : "s"}`;
+    if (t.stale_reports) out.push(["bad", `${pl(t.stale_reports, "report")} waiting more than 48 hours`, "reports"]);
+    if (t.stale_flags) out.push(["bad", `${pl(t.stale_flags, "scam alert")} waiting more than 48 hours`, "flags"]);
+    const su = change(cur.signups, prev.signups), ac = change(cur.active, prev.active);
+    if (prev.signups >= 5 && su <= -25) out.push(["warn", `New members are down ${-su}% on last week`]);
+    if (prev.signups >= 5 && su >= 25) out.push(["good", `New members are up ${su}% on last week`]);
+    if (prev.active >= 10 && ac <= -20) out.push(["warn", `Active members are down ${-ac}% on last week`]);
+    const [w, m] = t.gender, act = (w?.active_7d || 0) + (m?.active_7d || 0);
+    if (act >= 10 && w.active_7d / act < 0.3) out.push(["warn", `Only ${Math.round((100 * w.active_7d) / act)}% of members active this week are women`]);
+    return out;
+  }
+  function drawWeek(t) {
+    const el = $("#wow"); if (!el) return;
+    const { cur, prev } = t.weeks, notes = attention(t);
+    el.innerHTML = `<h2>This week vs last week</h2><p class="sub">Last 7 days against the 7 days before</p>
+      <div class="tablewrap"><table><thead><tr><th></th><th>This week</th><th>Last week</th><th>Change</th></tr></thead><tbody>
+        ${WEEK.map(([k, l, bad]) => `<tr><td>${l}</td><td><b>${num(cur[k])}</b></td><td class="muted">${num(prev[k])}</td><td>${deltaBadge(cur[k], prev[k], bad)}</td></tr>`).join("")}
+      </tbody></table></div>
+      <h2 style="font-size:14px;margin-top:16px">Needs attention</h2>
+      ${notes.length ? notes.map(([tone, text, tab]) => `<div style="margin-top:6px">${tab ? `<a href="#${tab}" data-go="${tab}" class="badge ${tone}">${esc(text)} →</a>` : `<span class="badge ${tone}">${esc(text)}</span>`}</div>`).join("")
+        : '<p class="sub" style="margin:6px 0 0">Nothing stands out this week.</p>'}`;
+    $$("[data-go]", el).forEach(a => a.onclick = e => { e.preventDefault(); go(a.dataset.go); });
+  }
+  function drawDau(t) {
+    const el = $("#dau"); if (!el) return;
+    const avg = t.dau.reduce((n, d) => n + d.count, 0) / t.dau.length;
+    el.innerHTML = `<h2>Daily active members</h2><p class="sub">Members who swiped, sent a message or made a call, per day</p>
+      <div class="counts" style="margin:6px 0 12px"><div><b>${num(t.dau.at(-1).count)}</b><span>Today so far</span></div><div><b>${num(t.wau)}</b><span>Last 7 days</span></div><div><b>${num(t.mau)}</b><span>Last 30 days</span></div>
+        <div title="Average daily active members divided by members active in the last 30 days"><b>${t.mau ? Math.round((100 * avg) / t.mau) + "%" : "—"}</b><span>Come back daily</span></div></div>
+      <div id="dauc"></div>`;
+    barChart($("#dauc"), t.dau.map(d => ({ label: d.day, value: d.count })), "active");
   }
   let activity = [];
   async function loadActivity() {
@@ -368,11 +419,18 @@
         <div class="card"><h2>Most liked profiles</h2><p class="sub">Very popular brand-new profiles can be fake. Worth a look.</p><div class="hbars">${leaderList(ld.most_liked || [], "likes")}</div>
           <h2 style="margin-top:18px">Most active chatters</h2><p class="sub">Messages sent</p><div class="hbars">${leaderList(ld.most_messages || [], "sent")}</div></div>
       </div>
+      <div class="grid2" style="margin-top:16px">
+        <div class="card" id="gendercard"><h2>Women and men</h2><div class="boot" style="min-height:160px"><span class="spin"></span></div></div>
+        <div class="card" id="towncard"><h2>Towns</h2><div class="boot" style="min-height:160px"><span class="spin"></span></div></div>
+      </div>
       <div class="card" style="margin-top:16px" id="devcard"><h2>Devices</h2><p class="sub">What members sign in with. Each member is counted once, by the device they used most recently.</p><div class="boot" style="min-height:120px"><span class="spin"></span></div></div>`;
     $("#rf").onclick = viewInsights;
     $$("[data-member]", main()).forEach(a => a.onclick = () => openMember(a.dataset.member));
     heatmap($("#heat"), d.heatmap || []);
     retention($("#ret"), d.retention || []);
+    rpc("admin_trends").then(t => { genderCard(t.gender); townCard(t.towns); }).catch(e => {
+      $$("#gendercard, #towncard").forEach(el => { el.innerHTML = `<h2>${el.id === "gendercard" ? "Women and men" : "Towns"}</h2><p class="empty">${esc(friendly(e))}</p>`; });
+    });
     rpc("admin_device_stats").then(ds => {
       const card = $("#devcard"); if (!card) return;
       const today = (ds.active_24h || []).map(x => `${num(x.count)} ${PLATFORM[x.label] || x.label}`).join(" · ");
@@ -386,6 +444,29 @@
           <div><h2 style="font-size:14px">Phone models</h2><div class="hbars" style="margin-top:8px">${hbarRows((ds.models || []).map(x => [x.label, x.count]))}</div></div>
         </div>` : '<p class="empty">No device information yet. It appears as members sign in.</p>'}`;
     }).catch(e => { const card = $("#devcard"); if (card) card.innerHTML = `<h2>Devices</h2><p class="empty">${esc(friendly(e))}</p>`; });
+  }
+  const share = (n, of) => of ? Math.round((100 * n) / of) + "%" : "—";
+  function genderCard(g) {
+    const el = $("#gendercard"); if (!el) return;
+    const [w, m] = g, ratio = m.members ? (10 * w.members / m.members).toFixed(1) : null;
+    const row = (label, f) => `<tr><td>${label}</td><td>${f(w)}</td><td>${f(m)}</td></tr>`;
+    el.innerHTML = `<h2>Women and men</h2><p class="sub">Finished profiles only. ${ratio ? `<b style="color:var(--text)">${ratio}</b> women for every 10 men.` : ""}</p>
+      <div class="tablewrap"><table><thead><tr><th></th><th>Women</th><th>Men</th></tr></thead><tbody>
+        ${row("Profiles", x => `<b>${num(x.members)}</b>`)}
+        ${row("Active this week", x => `<b>${share(x.active_7d, x.members)}</b> <span class="muted">(${num(x.active_7d)})</span>`)}
+        ${row("Have a match", x => `<b>${share(x.with_match, x.members)}</b> <span class="muted">(${num(x.with_match)})</span>`)}
+        ${row("Likes sent", x => num(x.likes_sent))}
+        ${row("Likes received", x => num(x.likes_received))}
+        ${row("Likes received per profile", x => x.members ? (x.likes_received / x.members).toFixed(1) : "—")}
+      </tbody></table></div>
+      <p class="sub" style="margin:10px 0 0">A big gap in likes received per profile between women and men is worth watching as Kindred grows.</p>`;
+  }
+  function townCard(towns) {
+    const el = $("#towncard"); if (!el) return;
+    el.innerHTML = `<h2>Towns</h2><p class="sub">Finished profiles, top ${towns.length} towns</p>
+      ${towns.length ? `<div class="tablewrap"><table><thead><tr><th>Town</th><th>Profiles</th><th>Women / men</th><th>New (30 d)</th><th>Active (7 d)</th><th>Have a match</th></tr></thead><tbody>
+        ${towns.map(c => `<tr><td><b>${esc(c.city)}</b></td><td>${num(c.members)}</td><td>${num(c.women)} / ${num(c.men)}</td><td>${num(c.new_30d)}</td><td>${share(c.active_7d, c.members)}</td><td>${share(c.matched, c.members)}</td></tr>`).join("")}
+      </tbody></table></div>` : '<p class="empty">No finished profiles with a town yet.</p>'}`;
   }
   const PLATFORM = { android_app: "Android app", ios_app: "iPhone app", web: "Website" };
   function heatmap(el, cells) {
